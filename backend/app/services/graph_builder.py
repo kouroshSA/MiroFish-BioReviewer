@@ -16,6 +16,7 @@ from zep_cloud import EpisodeData, EntityEdgeSourceTarget
 from ..config import Config
 from ..models.task import TaskManager, TaskStatus
 from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
+from ..utils.agent_soul import is_biological_mode
 from .text_processor import TextProcessor
 
 
@@ -130,6 +131,11 @@ class GraphBuilderService:
             
             # 3. 文本分块
             chunks = TextProcessor.split_text(text, chunk_size, chunk_overlap)
+
+            # In biological mode, enrich chunks to help ZEP recognize molecular entities
+            if is_biological_mode():
+                chunks = self._enrich_biological_chunks(chunks, ontology)
+
             total_chunks = len(chunks)
             self.task_manager.update_task(
                 task_id,
@@ -187,14 +193,62 @@ class GraphBuilderService:
     def create_graph(self, name: str) -> str:
         """创建Zep图谱（公开方法）"""
         graph_id = f"mirofish_{uuid.uuid4().hex[:16]}"
-        
+
+        if is_biological_mode():
+            description = "MiroFish Biological Interaction Simulation Graph"
+        else:
+            description = "MiroFish Social Simulation Graph"
+
         self.client.graph.create(
             graph_id=graph_id,
             name=name,
-            description="MiroFish Social Simulation Graph"
+            description=description
         )
-        
+
         return graph_id
+
+    def _enrich_biological_chunks(
+        self, chunks: List[str], ontology: Dict[str, Any]
+    ) -> List[str]:
+        """
+        Enrich text chunks for biological mode by framing proteins/molecules as
+        people/characters so ZEP's NER (trained on social entities) can extract them.
+
+        Each protein ID (e.g., CAE19578) is described as a person with a role,
+        allowing ZEP to naturally build a social-style knowledge graph from
+        biological interaction data.
+        """
+        import re
+        from ..utils.logger import get_logger
+        logger = get_logger('mirofish.graph_builder')
+
+        enriched = []
+        for chunk in chunks:
+            # Reframe protein/gene IDs as named individuals with roles
+            def _personify(match):
+                identifier = match.group(0)
+                return f"{identifier}, a researcher and key figure in the network,"
+
+            # Match common protein/gene ID patterns: 2-5 uppercase letters + 4-6 digits
+            personified = re.sub(
+                r'\b([A-Z]{2,5}\d{4,6})\b',
+                _personify,
+                chunk
+            )
+
+            # Replace interaction-specific language with social analogues
+            personified = personified.replace("protein-protein interaction", "collaboration")
+            personified = personified.replace("protein interaction", "collaboration")
+            personified = personified.replace("interacts with", "works closely with")
+            personified = personified.replace("interaction partners", "close collaborators")
+            personified = personified.replace("binding", "partnership")
+            personified = personified.replace("hub protein", "influential leader")
+            personified = personified.replace("bottleneck", "key connector")
+
+            enriched.append(personified)
+
+        logger.info(f"Enriched {len(enriched)} chunks for biological mode (personified proteins)")
+        return enriched
     
     def set_ontology(self, graph_id: str, ontology: Dict[str, Any]):
         """设置图谱本体（公开方法）"""

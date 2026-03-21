@@ -20,6 +20,11 @@ from openai import OpenAI
 
 from ..config import Config
 from ..utils.logger import get_logger
+from ..utils.agent_soul import (
+    is_biological_mode,
+    get_biological_default_time_config,
+    get_biological_time_config_prompt,
+)
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('mirofish.simulation_config')
@@ -535,9 +540,19 @@ class SimulationConfigGenerator:
         """生成时间配置"""
         # 使用配置的上下文截断长度
         context_truncated = context[:self.TIME_CONFIG_CONTEXT_LENGTH]
-        
-        # 计算最大允许值（80%的agent数）
+
+        # 计算最大允许值（90%的agent数）
         max_agents_allowed = max(1, int(num_entities * 0.9))
+
+        # Biological mode: use domain-specific time config prompt
+        if is_biological_mode():
+            prompt = get_biological_time_config_prompt(context_truncated, num_entities, max_agents_allowed)
+            system_prompt = "You are a biological simulation expert. Return pure JSON format for molecular interaction timing."
+            try:
+                return self._call_llm_with_retry(prompt, system_prompt)
+            except Exception as e:
+                logger.warning(f"Biological time config LLM generation failed: {e}, using defaults")
+                return get_biological_default_time_config(num_entities)
         
         prompt = f"""基于以下模拟需求，生成时间模拟配置。
 
@@ -593,7 +608,10 @@ class SimulationConfigGenerator:
             return self._get_default_time_config(num_entities)
     
     def _get_default_time_config(self, num_entities: int) -> Dict[str, Any]:
-        """获取默认时间配置（中国人作息）"""
+        """获取默认时间配置"""
+        if is_biological_mode():
+            return get_biological_default_time_config(num_entities)
+        # 社交模式：中国人作息
         return {
             "total_simulation_hours": 72,
             "minutes_per_round": 60,  # 每轮1小时，加快时间流速

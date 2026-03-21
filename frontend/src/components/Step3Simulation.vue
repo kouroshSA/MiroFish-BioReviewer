@@ -91,13 +91,13 @@
       </div>
 
       <div class="action-controls">
-        <button 
+        <button
           class="action-btn primary"
-          :disabled="phase !== 2 || isGeneratingReport"
+          :disabled="phase === 0 || isGeneratingReport"
           @click="handleNextStep"
         >
           <span v-if="isGeneratingReport" class="loading-spinner-small"></span>
-          {{ isGeneratingReport ? '启动中...' : '开始生成结果报告' }} 
+          {{ isGeneratingReport ? '启动中...' : (phase === 1 ? 'Stop & Generate Report Now' : '开始生成结果报告') }}
           <span v-if="!isGeneratingReport" class="arrow-icon">→</span>
         </button>
       </div>
@@ -643,15 +643,33 @@ const handleNextStep = async () => {
     addLog('错误：缺少 simulationId')
     return
   }
-  
+
   if (isGeneratingReport.value) {
     addLog('报告生成请求已发送，请稍候...')
     return
   }
-  
+
   isGeneratingReport.value = true
+
+  // If simulation is still running, stop it first
+  if (phase.value === 1) {
+    addLog('Stopping simulation early to generate report...')
+    try {
+      const stopRes = await stopSimulation({ simulation_id: props.simulationId })
+      if (stopRes.success) {
+        addLog('✓ Simulation stopped')
+        phase.value = 2
+        stopPolling()
+      } else {
+        addLog(`Stop failed: ${stopRes.error || 'unknown error'}, proceeding anyway...`)
+      }
+    } catch (err) {
+      addLog(`Stop error: ${err.message}, proceeding anyway...`)
+    }
+  }
+
   addLog('正在启动报告生成...')
-  
+
   try {
     const res = await generateReport({
       simulation_id: props.simulationId,

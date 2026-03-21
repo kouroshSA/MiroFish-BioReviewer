@@ -1,11 +1,17 @@
 """
 本体生成服务
-接口1：分析文本内容，生成适合社会模拟的实体和关系类型定义
+接口1：分析文本内容，生成适合社会模拟或生物模拟的实体和关系类型定义
 """
 
 import json
 from typing import Dict, Any, List, Optional
 from ..utils.llm_client import LLMClient
+from ..utils.agent_soul import (
+    is_biological_mode, get_simulation_mode,
+    BIOLOGICAL_ONTOLOGY_SYSTEM_PROMPT,
+    build_biological_user_message_suffix,
+    build_biological_fallback_types,
+)
 
 
 # 本体生成的系统提示词
@@ -183,13 +189,18 @@ class OntologyGenerator:
         """
         # 构建用户消息
         user_message = self._build_user_message(
-            document_texts, 
+            document_texts,
             simulation_requirement,
             additional_context
         )
-        
+
+        # In biological mode, still use the social ontology prompt so ZEP's NER
+        # can recognize entities as people/organizations. The biological personality
+        # is applied later during persona generation.
+        system_prompt = ONTOLOGY_SYSTEM_PROMPT
+
         messages = [
-            {"role": "system", "content": ONTOLOGY_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message}
         ]
         
@@ -241,6 +252,8 @@ class OntologyGenerator:
 {additional_context}
 """
         
+        # Always use social ontology rules — even in biological mode, ZEP needs
+        # Person/Organization fallback types for its NER to work properly.
         message += """
 请根据以上内容，设计适合社会舆论模拟的实体类型和关系类型。
 
@@ -288,7 +301,7 @@ class OntologyGenerator:
         MAX_ENTITY_TYPES = 10
         MAX_EDGE_TYPES = 10
         
-        # 兜底类型定义
+        # 兜底类型定义 — always use Person/Organization for ZEP compatibility
         person_fallback = {
             "name": "Person",
             "description": "Any individual person not fitting other specific person types.",
@@ -298,7 +311,7 @@ class OntologyGenerator:
             ],
             "examples": ["ordinary citizen", "anonymous netizen"]
         }
-        
+
         organization_fallback = {
             "name": "Organization",
             "description": "Any organization not fitting other specific organization types.",
@@ -308,12 +321,12 @@ class OntologyGenerator:
             ],
             "examples": ["small business", "community group"]
         }
-        
+
         # 检查是否已有兜底类型
         entity_names = {e["name"] for e in result["entity_types"]}
         has_person = "Person" in entity_names
         has_organization = "Organization" in entity_names
-        
+
         # 需要添加的兜底类型
         fallbacks_to_add = []
         if not has_person:

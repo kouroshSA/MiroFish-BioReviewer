@@ -20,6 +20,14 @@ from zep_cloud.client import Zep
 
 from ..config import Config
 from ..utils.logger import get_logger
+from ..utils.agent_soul import (
+    is_biological_mode, get_simulation_mode,
+    BIOLOGICAL_INDIVIDUAL_ENTITY_TYPES,
+    BIOLOGICAL_GROUP_ENTITY_TYPES,
+    BIOLOGICAL_PERSONA_SYSTEM_PROMPT,
+    build_biological_individual_prompt,
+    build_biological_group_prompt,
+)
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('mirofish.oasis_profile')
@@ -487,8 +495,11 @@ class OasisProfileGenerator:
     
     def _is_individual_entity(self, entity_type: str) -> bool:
         """判断是否是个人类型实体"""
+        # In biological mode, ZEP still extracts Person/Organization types,
+        # so we use the standard social entity type lists for classification.
+        # The biological personality is applied via the prompt, not entity type.
         return entity_type.lower() in self.INDIVIDUAL_ENTITY_TYPES
-    
+
     def _is_group_entity(self, entity_type: str) -> bool:
         """判断是否是群体/机构类型实体"""
         return entity_type.lower() in self.GROUP_ENTITY_TYPES
@@ -510,8 +521,23 @@ class OasisProfileGenerator:
         """
         
         is_individual = self._is_individual_entity(entity_type)
-        
-        if is_individual:
+
+        # In biological mode, entities come from ZEP as Person/Organization,
+        # but we generate personas that blend biological identity with social
+        # behavior. The biological context from the document shapes the personality.
+        if is_biological_mode():
+            # Use biological prompts — these generate molecular personas
+            # framed as social media characters whose personality reflects
+            # their biological function.
+            if is_individual:
+                prompt = build_biological_individual_prompt(
+                    entity_name, entity_type, entity_summary, entity_attributes, context
+                )
+            else:
+                prompt = build_biological_group_prompt(
+                    entity_name, entity_type, entity_summary, entity_attributes, context
+                )
+        elif is_individual:
             prompt = self._build_individual_persona_prompt(
                 entity_name, entity_type, entity_summary, entity_attributes, context
             )
@@ -670,6 +696,8 @@ class OasisProfileGenerator:
     
     def _get_system_prompt(self, is_individual: bool) -> str:
         """获取系统提示词"""
+        if is_biological_mode():
+            return BIOLOGICAL_PERSONA_SYSTEM_PROMPT
         base_prompt = "你是社交媒体用户画像生成专家。生成详细、真实的人设用于舆论模拟,最大程度还原已有现实情况。必须返回有效的JSON格式，所有字符串值不能包含未转义的换行符。使用中文。"
         return base_prompt
     
@@ -778,10 +806,16 @@ class OasisProfileGenerator:
         entity_attributes: Dict[str, Any]
     ) -> Dict[str, Any]:
         """使用规则生成基础人设"""
-        
+
+        # Biological mode: generate molecular profile
+        if is_biological_mode():
+            return self._generate_biological_profile_rule_based(
+                entity_name, entity_type, entity_summary, entity_attributes
+            )
+
         # 根据实体类型生成不同的人设
         entity_type_lower = entity_type.lower()
-        
+
         if entity_type_lower in ["student", "alumni"]:
             return {
                 "bio": f"{entity_type} with interests in academics and social issues.",
@@ -843,6 +877,36 @@ class OasisProfileGenerator:
                 "interested_topics": ["General", "Social Issues"],
             }
     
+    def _generate_biological_profile_rule_based(
+        self,
+        entity_name: str,
+        entity_type: str,
+        entity_summary: str,
+        entity_attributes: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Rule-based fallback for biological entities — generates character personas"""
+        summary = entity_summary or f"{entity_name} participates in cellular interactions."
+
+        bio = summary[:200] if len(summary) > 10 else f"{entity_name} — a key player in the molecular network"
+        persona = (
+            f"{entity_name} is a character in this molecular world. {summary} "
+            f"Their personality reflects their biological role — they interact with others "
+            f"based on their molecular function, form alliances through binding, and compete "
+            f"for resources. They post about their cellular experiences and respond to "
+            f"environmental changes based on their expression patterns."
+        )
+
+        return {
+            "bio": bio,
+            "persona": persona,
+            "age": random.randint(25, 55),
+            "gender": random.choice(["male", "female"]),
+            "mbti": random.choice(self.MBTI_TYPES),
+            "country": "Cellular District",
+            "profession": entity_attributes.get("role", "Molecular Specialist"),
+            "interested_topics": ["molecular interactions", "cellular processes", "network dynamics"],
+        }
+
     def set_graph_id(self, graph_id: str):
         """设置图谱ID用于Zep检索"""
         self.graph_id = graph_id

@@ -35,6 +35,10 @@ class Config:
     # Zep配置
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
     
+    # Agent Soul / Simulation Mode配置
+    SIMULATION_MODE = os.environ.get('SIMULATION_MODE', 'social')  # social, biological, custom
+    AGENT_SOUL_PATH = os.environ.get('AGENT_SOUL_PATH', os.path.join(os.path.dirname(__file__), '../../agent-soul.md'))
+
     # 文件上传配置
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB
     UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), '../uploads')
