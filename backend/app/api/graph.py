@@ -4,9 +4,10 @@
 """
 
 import os
+import json
 import traceback
 import threading
-from flask import request, jsonify
+from flask import request, jsonify, send_file
 
 from . import graph_bp
 from ..config import Config
@@ -463,7 +464,17 @@ def build_graph():
                     progress=95
                 )
                 graph_data = builder.get_graph_data(graph_id)
-                
+
+                # Auto-save initial graph snapshot
+                try:
+                    snapshots_dir = _get_snapshots_dir(graph_id)
+                    initial_path = os.path.join(snapshots_dir, "graph_initial.json")
+                    with open(initial_path, 'w', encoding='utf-8') as sf:
+                        json.dump(graph_data, sf, ensure_ascii=False, indent=2)
+                    build_logger.info(f"[{task_id}] Initial graph snapshot saved")
+                except Exception as snap_err:
+                    build_logger.warning(f"[{task_id}] Failed to save initial snapshot: {snap_err}")
+
                 # 更新项目状态
                 project.status = ProjectStatus.GRAPH_COMPLETED
                 ProjectManager.save_project(project)
@@ -603,15 +614,140 @@ def delete_graph(graph_id: str):
         
         builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
         builder.delete_graph(graph_id)
-        
+
         return jsonify({
             "success": True,
             "message": f"图谱已删除: {graph_id}"
         })
-        
+
     except Exception as e:
         return jsonify({
             "success": False,
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
+
+
+# ============== Graph Snapshot / Export ==============
+
+def _get_snapshots_dir(graph_id: str) -> str:
+    """Get the snapshots directory for a graph, creating it if needed."""
+    snapshots_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, '..', 'graph_snapshots', graph_id)
+    snapshots_dir = os.path.abspath(snapshots_dir)
+    os.makedirs(snapshots_dir, exist_ok=True)
+    return snapshots_dir
+
+
+@graph_bp.route('/snapshot/<graph_id>', methods=['POST'])
+def save_graph_snapshot(graph_id: str):
+    """
+    Save a snapshot of the current graph data as JSON.
+
+    Request (JSON):
+        {
+            "label": "initial" | "pre_simulation" | "post_simulation" | "report" | <custom>
+        }
+
+    The snapshot is saved to disk and can be downloaded later.
+    """
+    try:
+        data = request.get_json() or {}
+        label = data.get('label', 'snapshot')
+
+        if not Config.ZEP_API_KEY:
+            return jsonify({"success": False, "error": "ZEP_API_KEY未配置"}), 500
+
+        builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
+        graph_data = builder.get_graph_data(graph_id)
+
+        snapshots_dir = _get_snapshots_dir(graph_id)
+        filename = f"graph_{label}.json"
+        filepath = os.path.join(snapshots_dir, filename)
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(graph_data, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"Graph snapshot saved: {filepath}")
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "graph_id": graph_id,
+                "label": label,
+                "filename": filename,
+                "node_count": graph_data.get("node_count", 0),
+                "edge_count": graph_data.get("edge_count", 0)
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to save graph snapshot: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@graph_bp.route('/snapshot/<graph_id>/download', methods=['GET'])
+def download_graph_snapshot(graph_id: str):
+    """
+    Download a saved graph snapshot as JSON.
+
+    Query params:
+        label: snapshot label (default: "snapshot")
+    """
+    try:
+        label = request.args.get('label', 'snapshot')
+        snapshots_dir = _get_snapshots_dir(graph_id)
+        filepath = os.path.join(snapshots_dir, f"graph_{label}.json")
+
+        if not os.path.exists(filepath):
+            # Fall back to fetching live data from Zep
+            if not Config.ZEP_API_KEY:
+                return jsonify({"success": False, "error": "No snapshot found and ZEP_API_KEY未配置"}), 404
+
+            builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
+            graph_data = builder.get_graph_data(graph_id)
+
+            # Save it as a snapshot too
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(graph_data, f, ensure_ascii=False, indent=2)
+
+        return send_file(
+            filepath,
+            as_attachment=True,
+            download_name=f"graph_{graph_id}_{label}.json",
+            mimetype='application/json'
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to download graph snapshot: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@graph_bp.route('/snapshot/<graph_id>/list', methods=['GET'])
+def list_graph_snapshots(graph_id: str):
+    """List all saved snapshots for a graph."""
+    try:
+        snapshots_dir = _get_snapshots_dir(graph_id)
+        snapshots = []
+        for f in sorted(os.listdir(snapshots_dir)):
+            if f.startswith('graph_') and f.endswith('.json'):
+                label = f[len('graph_'):-len('.json')]
+                fpath = os.path.join(snapshots_dir, f)
+                snapshots.append({
+                    "label": label,
+                    "filename": f,
+                    "size_bytes": os.path.getsize(fpath),
+                    "modified": os.path.getmtime(fpath)
+                })
+
+        return jsonify({"success": True, "data": snapshots})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500

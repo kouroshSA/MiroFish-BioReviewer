@@ -68,3 +68,27 @@ export function getProject(projectId) {
     method: 'get'
   })
 }
+
+/**
+ * Save a graph snapshot
+ * @param {String} graphId
+ * @param {String} label - e.g. "initial", "report", "post_simulation"
+ */
+export function saveGraphSnapshot(graphId, label = 'snapshot') {
+  return service({
+    url: `/api/graph/snapshot/${graphId}`,
+    method: 'post',
+    data: { label }
+  })
+}
+
+/**
+ * List saved graph snapshots
+ * @param {String} graphId
+ */
+export function listGraphSnapshots(graphId) {
+  return service({
+    url: `/api/graph/snapshot/${graphId}/list`,
+    method: 'get'
+  })
+}

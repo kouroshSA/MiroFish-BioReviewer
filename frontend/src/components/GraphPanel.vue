@@ -4,6 +4,14 @@
       <span class="panel-title">Graph Relationship Visualization</span>
       <!-- 顶部工具栏 (Internal Top Right) -->
       <div class="header-tools">
+        <button class="tool-btn" @click="exportGraphPng" :disabled="!graphData" title="Export as PNG">
+          <span class="icon-download">📷</span>
+          <span class="btn-text">PNG</span>
+        </button>
+        <button class="tool-btn" @click="downloadGraphJson" :disabled="!graphData" title="Download graph data (JSON)">
+          <span class="icon-download">⬇</span>
+          <span class="btn-text">JSON</span>
+        </button>
         <button class="tool-btn" @click="$emit('refresh')" :disabled="loading" title="刷新图谱">
           <span class="icon-refresh" :class="{ 'spinning': loading }">↻</span>
           <span class="btn-text">Refresh</span>
@@ -811,6 +819,67 @@ onUnmounted(() => {
     currentSimulation.stop()
   }
 })
+
+// --- Export functions ---
+
+const downloadGraphJson = () => {
+  if (!props.graphData) return
+  const dataStr = JSON.stringify(props.graphData, null, 2)
+  const blob = new Blob([dataStr], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `graph_${props.graphData.graph_id || 'export'}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const exportGraphPng = () => {
+  const svgEl = graphSvg.value
+  if (!svgEl) return
+
+  // Clone SVG and inline styles for export
+  const clone = svgEl.cloneNode(true)
+  const container = graphContainer.value
+  const width = container.clientWidth || 1200
+  const height = container.clientHeight || 800
+
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  clone.setAttribute('width', width)
+  clone.setAttribute('height', height)
+
+  // Add a white background rect
+  const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+  bgRect.setAttribute('width', '100%')
+  bgRect.setAttribute('height', '100%')
+  bgRect.setAttribute('fill', '#1a1a2e')
+  clone.insertBefore(bgRect, clone.firstChild)
+
+  const svgData = new XMLSerializer().serializeToString(clone)
+  const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+  const url = URL.createObjectURL(svgBlob)
+
+  const img = new Image()
+  img.onload = () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = width * 2  // 2x for retina
+    canvas.height = height * 2
+    const ctx = canvas.getContext('2d')
+    ctx.scale(2, 2)
+    ctx.drawImage(img, 0, 0, width, height)
+    URL.revokeObjectURL(url)
+
+    canvas.toBlob((blob) => {
+      const pngUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = pngUrl
+      a.download = `graph_${props.graphData?.graph_id || 'export'}.png`
+      a.click()
+      URL.revokeObjectURL(pngUrl)
+    }, 'image/png')
+  }
+  img.src = url
+}
 </script>
 
 <style scoped>

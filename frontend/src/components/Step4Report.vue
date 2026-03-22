@@ -127,14 +127,34 @@
             </div>
           </div>
 
-          <!-- Next Step Button - 在完成后显示 -->
-          <button v-if="isComplete" class="next-step-btn" @click="goToInteraction">
-            <span>进入深度互动</span>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-              <polyline points="12 5 19 12 12 19"></polyline>
-            </svg>
-          </button>
+          <!-- Action buttons when complete -->
+          <div v-if="isComplete" class="complete-actions">
+            <button class="next-step-btn" @click="goToInteraction">
+              <span>进入深度互动</span>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+              </svg>
+            </button>
+
+            <!-- Export dropdown -->
+            <div class="export-dropdown-wrapper">
+              <button class="export-btn" @click="showExportMenu = !showExportMenu">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Export Report</span>
+              </button>
+              <div v-if="showExportMenu" class="export-menu">
+                <button @click="exportReport('md')">Markdown (.md)</button>
+                <button @click="exportReport('txt')">Plain Text (.txt)</button>
+                <button @click="exportReport('docx')">Word (.docx)</button>
+                <button @click="exportReport('pdf')">PDF (.pdf)</button>
+              </div>
+            </div>
+          </div>
 
           <div class="workflow-divider"></div>
         </div>
@@ -411,6 +431,20 @@ const goToInteraction = () => {
   }
 }
 
+// Report Export
+const exportReport = (fmt) => {
+  showExportMenu.value = false
+  if (!props.reportId) return
+
+  if (fmt === 'md') {
+    // Use existing download endpoint
+    window.open(`/api/report/${props.reportId}/download`, '_blank')
+  } else {
+    // Use new export endpoint for txt, docx, pdf
+    window.open(`/api/report/${props.reportId}/export/${fmt}`, '_blank')
+  }
+}
+
 // State
 const agentLogs = ref([])
 const consoleLogs = ref([])
@@ -428,6 +462,7 @@ const leftPanel = ref(null)
 const rightPanel = ref(null)
 const logContent = ref(null)
 const showRawResult = reactive({})
+const showExportMenu = ref(false)
 
 // Toggle functions
 const toggleRawResult = (timestamp, event) => {
@@ -3397,13 +3432,18 @@ watch(() => props.reportId, (newId) => {
   font-size: 14px;
 }
 
+.complete-actions {
+  display: flex;
+  gap: 8px;
+  margin: 4px 20px 0 20px;
+}
+
 .next-step-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: calc(100% - 40px);
-  margin: 4px 20px 0 20px;
+  flex: 1;
   padding: 14px 20px;
   font-size: 14px;
   font-weight: 600;
@@ -3425,6 +3465,66 @@ watch(() => props.reportId, (newId) => {
 
 .next-step-btn:hover svg {
   transform: translateX(4px);
+}
+
+/* Export Dropdown */
+.export-dropdown-wrapper {
+  position: relative;
+}
+
+.export-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1F2937;
+  background: #F3F4F6;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.export-btn:hover {
+  background: #E5E7EB;
+}
+
+.export-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 4px;
+  background: #FFFFFF;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  z-index: 100;
+  min-width: 160px;
+}
+
+.export-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #374151;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.export-menu button:hover {
+  background: #F3F4F6;
+}
+
+.export-menu button:not(:last-child) {
+  border-bottom: 1px solid #F3F4F6;
 }
 
 /* Workflow Empty */
