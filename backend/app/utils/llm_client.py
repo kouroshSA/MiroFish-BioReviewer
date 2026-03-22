@@ -5,15 +5,23 @@ LLM客户端封装
 
 import json
 import re
+import threading
+import logging
 from typing import Optional, Dict, Any, List
 from openai import OpenAI
 
 from ..config import Config
 
+logger = logging.getLogger('mirofish.llm_client')
+
+# Module-level semaphore shared by all LLMClient instances so that
+# concurrent requests across the entire process are throttled.
+_llm_semaphore = threading.Semaphore(Config.MAX_CONCURRENT_LLM_REQUESTS)
+
 
 class LLMClient:
     """LLM客户端"""
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -23,10 +31,10 @@ class LLMClient:
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
         self.model = model or Config.LLM_MODEL_NAME
-        
+
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
-        
+
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url
@@ -60,8 +68,14 @@ class LLMClient:
         
         if response_format:
             kwargs["response_format"] = response_format
-        
-        response = self.client.chat.completions.create(**kwargs)
+
+        # Queue gate: limit concurrent LLM requests to avoid overwhelming
+        # the inference server (Ollama/vLLM) and crashing the system.
+        logger.debug("Waiting for LLM semaphore (%d/%d slots in use)",
+                     Config.MAX_CONCURRENT_LLM_REQUESTS - _llm_semaphore._value,
+                     Config.MAX_CONCURRENT_LLM_REQUESTS)
+        with _llm_semaphore:
+            response = self.client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content
         # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()

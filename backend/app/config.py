@@ -49,7 +49,10 @@ class Config:
     DEFAULT_CHUNK_OVERLAP = 50  # 默认重叠大小
     
     # OASIS模拟配置
-    OASIS_DEFAULT_MAX_ROUNDS = int(os.environ.get('OASIS_DEFAULT_MAX_ROUNDS', '10'))
+    OASIS_DEFAULT_MAX_ROUNDS = int(os.environ.get('OASIS_DEFAULT_MAX_ROUNDS', '90'))
+
+    # LLM concurrency control — max simultaneous requests to Ollama/LLM server
+    MAX_CONCURRENT_LLM_REQUESTS = int(os.environ.get('MAX_CONCURRENT_LLM_REQUESTS', '2'))
     OASIS_SIMULATION_DATA_DIR = os.path.join(os.path.dirname(__file__), '../uploads/simulations')
     
     # OASIS平台可用动作配置

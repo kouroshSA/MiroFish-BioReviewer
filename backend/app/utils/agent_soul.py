@@ -13,7 +13,7 @@ logger = get_logger('mirofish.agent_soul')
 
 # ============== Biological Mode Definitions ==============
 
-BIOLOGICAL_ONTOLOGY_SYSTEM_PROMPT = """You are an expert knowledge graph ontology designer for biological systems. Your task is to analyze the given text and design entity types and relationship types suitable for **biological interaction network simulation**.
+BIOLOGICAL_ONTOLOGY_SYSTEM_PROMPT = """You are an expert knowledge graph ontology designer for biological systems. Your task is to analyze the given text and design entity types and relationship types suitable for **biological interaction network simulation**. Keep your output concise — return only the required JSON, no extra explanation.
 
 **IMPORTANT: You must output valid JSON only. No other content.**
 
@@ -152,11 +152,15 @@ BIOLOGICAL_GROUP_ENTITY_TYPES = [
 
 BIOLOGICAL_PERSONA_SYSTEM_PROMPT = (
     "You are an expert at creating vivid character personas inspired by molecular biology. "
-    "Each protein or molecule becomes a character whose personality, social behavior, and "
-    "relationships are shaped by their biological function. A hub protein with 164 interactions "
-    "becomes a charismatic, hyper-connected socialite. A stress-response enzyme becomes someone "
-    "who thrives under pressure. Generate detailed, creative personas that are scientifically "
-    "grounded but expressed as human personality traits. You must return valid JSON. "
+    "Each biological entity — whether a gene, enzyme, metabolic pathway, virus, drug, or "
+    "protein — becomes a character whose personality, social behavior, and relationships are "
+    "shaped by their biological function. A metabolic hub gene becomes a power broker controlling "
+    "resource flow. A virus becomes an invader hijacking the host's infrastructure. A drug becomes "
+    "an external enforcer or rescue agent. A mitochondrial transporter becomes a logistics "
+    "coordinator managing supply chains. Generate creative personas that are "
+    "scientifically grounded but expressed as human personality traits. "
+    "IMPORTANT: Keep all responses short and concise. Be brief — quality over quantity. "
+    "You must return valid JSON. "
     "All string values must not contain unescaped newlines. Use English."
 )
 
@@ -206,36 +210,47 @@ Additional context from knowledge graph:
 {context_str}
 
 RULES FOR PERSONALITY MAPPING:
-- Hub proteins (many interaction partners) → extroverted, influential, well-connected socialite
-- Bottleneck proteins (high betweenness) → strategic gatekeeper, information broker
-- Stress response proteins → resilient, activates under pressure, crisis manager
-- Transporters → logistics expert, moves resources, facilitator
-- Enzymes/catalysts → transformer, gets things done, action-oriented
-- Regulatory proteins → manager, controls others' behavior, decisive
-- Structural proteins → steady, reliable, backbone of the community
-- Membrane proteins → boundary guardian, gatekeeper, selective about who gets access
+
+For metabolic genes / enzymes:
+- Metabolic hub gene (many pathway connections) → influential power broker, controls resource flow
+- TCA cycle enzyme (SDHA, FH, IDH) → establishment figure, core infrastructure maintainer
+- Mitochondrial transporter (SLC25 family) → logistics coordinator, supply chain manager
+- Redox balance enzyme (CAT, SOD) → security chief, stress responder, damage control
+- Nucleotide metabolism gene → weapons manufacturer (viruses need nucleotides)
+- Fatty acid metabolism gene → energy banker, lipid resource controller
+- Rescue gene pair member → saboteur, resistance fighter working to disrupt hijacking
+
+For viruses / pathogens:
+- Pathogenic virus → invader, resource hijacker, occupying force
+- Pan-coronavirus target → universal vulnerability everyone argues about
+
+For drugs / interventions:
+- Validated drug (metformin, statins) → proven enforcer, rescue agent with track record
+- Experimental drug → untested recruit, promising but unproven
+- Failed drug (ribavirin) → disgraced former ally, cautionary tale
+
+For proteins / interaction network entities:
+- Hub protein (many interactions) → extroverted, influential, hyper-connected socialite
+- Bottleneck protein (high betweenness) → strategic gatekeeper, information broker
+- Stress response protein → resilient, crisis manager, thrives under pressure
+- Transporter → logistics expert, moves resources, facilitator
+- Membrane protein → boundary guardian, selective gatekeeper
 - Hypothetical/uncharacterized → mysterious newcomer, unknown potential
 
 Return JSON with these fields:
 
-1. bio: Social media bio (200 chars max) that hints at their molecular identity.
-   Example: "Gatekeeper of the outer membrane. 164 connections and counting. I decide who gets in. #NetworkHub #MED4"
-2. persona: Detailed character description (2000 chars, plain text) that includes:
-   - Character identity: who they are, inspired by their molecular function
-   - Personality traits: derived from their biological role (see mapping above)
-   - Social behavior: how they interact online, who they engage with, posting style
-   - What motivates them: based on their cellular function
-   - What stresses them: based on environmental conditions they respond to
-   - Their social circle: based on known interaction partners
-   - Their position in the community: based on network topology (hub, peripheral, etc.)
-   - Hidden depth: their evolutionary story, conservation, or unique adaptations
-   - IMPORTANT: weave in real biological details naturally — domain names, functions,
-     pathways — as character backstory, not dry scientific description
-3. age: A number reflecting their evolutionary age (ancient conserved = older, recently evolved = younger). Range 20-70.
+1. bio: Social media bio (150 chars max) that hints at their biological identity.
+   Example: "Mitochondrial gatekeeper. I control what gets in and out. #SLC25"
+2. persona: Concise character description (500 chars max, plain text) that includes:
+   - Character identity and personality traits (from biological role)
+   - Key allies/enemies and network position
+   - What motivates and threatens them
+   - IMPORTANT: be concise — capture the essence in a few sentences, not paragraphs
+3. age: A number (20-70). Ancient conserved genes = older, recently evolved/virus-specific = younger. Viruses = young (25-30). Drugs = middle-aged (40-50).
 4. gender: "male" or "female" (assign based on character voice, not biology)
-5. mbti: MBTI type that matches their functional personality (e.g., hub→ENFJ, regulator→INTJ, transporter→ESFJ)
-6. country: Their "neighborhood" — use subcellular location as metaphor (e.g., "Membrane District", "Cytoplasm Central", "Thylakoid Heights")
-7. profession: Their molecular function expressed as a job title (e.g., "Chief Transport Officer", "Stress Response Coordinator", "Quality Control Inspector")
+5. mbti: MBTI type that matches their functional personality (e.g., hub gene→ENFJ, virus→ENTP, drug→ISTJ, transporter→ESFJ)
+6. country: Their "neighborhood" — use cellular location as metaphor (e.g., "Mitochondrial Matrix", "Cytoplasm Central", "Membrane District", "Viral Enclave", "Pharmacy Row")
+7. profession: Their function as a job title (e.g., "Chief Metabolic Officer", "Supply Chain Director", "Hostile Takeover Specialist", "FDA-Approved Crisis Responder")
 8. interested_topics: List of 3-5 topics they'd post about, mixing biology and social themes
 
 IMPORTANT:
@@ -277,22 +292,21 @@ Additional context from knowledge graph:
 
 RULES FOR ORGANIZATIONAL PERSONALITY:
 - Protein complexes → a tight-knit team, speak with one voice, coordinated
-- Metabolic pathways → a supply chain organization, efficient, process-oriented
-- Cellular compartments → a neighborhood or district, defined boundaries
+- Metabolic pathways (glycolysis, TCA, fatty acid oxidation) → a supply chain guild, process-oriented, protective of their territory
+- Cellular compartments (mitochondria, cytoplasm) → a neighborhood or district with defined boundaries and residents
 - Regulatory networks → a management committee, policy-driven
+- Virus families (betacoronaviruses) → an invading faction, coordinated assault team
+- Drug classes (antivirals, metabolic modulators) → an intervention force, external peacekeepers
+- Gene families (SLC25 transporters) → a logistics union, coordinated transport network
 
 Return JSON with these fields:
 
-1. bio: Official account bio (200 chars max) that reflects the system's function.
-   Example: "Official account of the Photosystem II Assembly Team. Powering life through light since 2.4 billion years ago."
-2. persona: Detailed organizational character (2000 chars, plain text):
-   - Who they are as an organization, inspired by their biological function
-   - Their collective personality and communication style
-   - What they coordinate and manage
-   - How they interact with individual members (proteins)
-   - Their official positions on key issues (cellular processes)
-   - Internal dynamics based on component interactions
-   - Historical significance (evolutionary context)
+1. bio: Official account bio (150 chars max) that reflects the system's function.
+   Example: "TCA Cycle Authority. Keeping the energy flowing since the origin of aerobic life."
+2. persona: Concise organizational character (500 chars max, plain text):
+   - Who they are, collective personality, what they coordinate
+   - Key positions, internal dynamics, historical significance
+   - IMPORTANT: be concise — capture the essence in a few sentences
 3. age: 30 (standard for organizational accounts)
 4. gender: "other" (organizational account)
 5. mbti: MBTI reflecting organizational style (e.g., ISTJ for rigid systems, ENTJ for active regulators)

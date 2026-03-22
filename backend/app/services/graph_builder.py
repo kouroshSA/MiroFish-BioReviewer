@@ -224,26 +224,44 @@ class GraphBuilderService:
 
         enriched = []
         for chunk in chunks:
-            # Reframe protein/gene IDs as named individuals with roles
-            def _personify(match):
+            # Reframe biological entity IDs as named individuals with roles
+            def _personify_id(match):
                 identifier = match.group(0)
-                return f"{identifier}, a researcher and key figure in the network,"
+                return f"{identifier}, a key figure in the network,"
 
-            # Match common protein/gene ID patterns: 2-5 uppercase letters + 4-6 digits
+            # Match protein/gene ID patterns: 2-5 uppercase letters + 4-6 digits (CAE19578, SLC25A13)
             personified = re.sub(
                 r'\b([A-Z]{2,5}\d{4,6})\b',
-                _personify,
+                _personify_id,
                 chunk
             )
 
-            # Replace interaction-specific language with social analogues
+            # Also match common gene names: 2-6 uppercase letters + 1-2 digits (CPT2, SDHA, IDH1, FH1, HMGCR)
+            # Require at least one digit to avoid matching acronyms like SARS, MERS, WHO, RNA, etc.
+            def _personify_gene(match):
+                gene = match.group(0)
+                return f"{gene}, an important actor,"
+
+            personified = re.sub(
+                r'\b([A-Z]{2,6}\d{1,2})\b',
+                _personify_gene,
+                personified
+            )
+
+            # Replace biological language with social analogues
             personified = personified.replace("protein-protein interaction", "collaboration")
             personified = personified.replace("protein interaction", "collaboration")
             personified = personified.replace("interacts with", "works closely with")
             personified = personified.replace("interaction partners", "close collaborators")
-            personified = personified.replace("binding", "partnership")
             personified = personified.replace("hub protein", "influential leader")
+            personified = personified.replace("hub gene", "influential leader")
             personified = personified.replace("bottleneck", "key connector")
+            personified = personified.replace("gene knockout", "removal of a key player")
+            personified = personified.replace("double-knockout", "removal of two key players")
+            personified = personified.replace("metabolic perturbation", "disruption of the community")
+            personified = personified.replace("flux perturbation", "disruption of resource flow")
+            personified = personified.replace("rescue", "intervention to restore order")
+            personified = personified.replace("drug target", "person of interest for intervention")
 
             enriched.append(personified)
 
