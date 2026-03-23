@@ -2,7 +2,7 @@
   <div class="graph-panel">
     <div class="panel-header">
       <span class="panel-title">Graph Relationship Visualization</span>
-      <!-- 顶部工具栏 (Internal Top Right) -->
+      <!-- Top Toolbar (Internal Top Right) -->
       <div class="header-tools">
         <button class="tool-btn" @click="exportGraphPng" :disabled="!graphData" title="Export as PNG">
           <span class="icon-download">📷</span>
@@ -12,22 +12,22 @@
           <span class="icon-download">⬇</span>
           <span class="btn-text">JSON</span>
         </button>
-        <button class="tool-btn" @click="$emit('refresh')" :disabled="loading" title="刷新图谱">
+        <button class="tool-btn" @click="$emit('refresh')" :disabled="loading" title="Refresh graph">
           <span class="icon-refresh" :class="{ 'spinning': loading }">↻</span>
           <span class="btn-text">Refresh</span>
         </button>
-        <button class="tool-btn" @click="$emit('toggle-maximize')" title="最大化/还原">
+        <button class="tool-btn" @click="$emit('toggle-maximize')" title="Maximize/Restore">
           <span class="icon-maximize">⛶</span>
         </button>
       </div>
     </div>
     
     <div class="graph-container" ref="graphContainer">
-      <!-- 图谱可视化 -->
+      <!-- Graph Visualization -->
       <div v-if="graphData" class="graph-view">
         <svg ref="graphSvg" class="graph-svg"></svg>
         
-        <!-- 构建中/模拟中提示 -->
+        <!-- Building/Simulating Hint -->
         <div v-if="currentPhase === 1 || isSimulating" class="graph-building-hint">
           <div class="memory-icon-wrapper">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="memory-icon">
@@ -35,10 +35,10 @@
               <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-4.04z" />
             </svg>
           </div>
-          {{ isSimulating ? 'GraphRAG长短期记忆实时更新中' : '实时更新中...' }}
+          {{ isSimulating ? 'GraphRAG long/short-term memory updating in real time' : 'Updating in real time...' }}
         </div>
         
-        <!-- 模拟结束后的提示 -->
+        <!-- Post-Simulation Hint -->
         <div v-if="showSimulationFinishedHint" class="graph-building-hint finished-hint">
           <div class="hint-icon-wrapper">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hint-icon">
@@ -47,8 +47,8 @@
               <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
           </div>
-          <span class="hint-text">还有少量内容处理中，建议稍后手动刷新图谱</span>
-          <button class="hint-close-btn" @click="dismissFinishedHint" title="关闭提示">
+          <span class="hint-text">Some content is still being processed. Consider manually refreshing the graph later.</span>
+          <button class="hint-close-btn" @click="dismissFinishedHint" title="Close hint">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -56,7 +56,7 @@
           </button>
         </div>
         
-        <!-- 节点/边详情面板 -->
+        <!-- Node/Edge Detail Panel -->
         <div v-if="selectedItem" class="detail-panel">
           <div class="detail-panel-header">
             <span class="detail-title">{{ selectedItem.type === 'node' ? 'Node Details' : 'Relationship' }}</span>
@@ -66,7 +66,7 @@
             <button class="detail-close" @click="closeDetailPanel">×</button>
           </div>
           
-          <!-- 节点详情 -->
+          <!-- Node Details -->
           <div v-if="selectedItem.type === 'node'" class="detail-content">
             <div class="detail-row">
               <span class="detail-label">Name:</span>
@@ -109,9 +109,9 @@
             </div>
           </div>
           
-          <!-- 边详情 -->
+          <!-- Edge Details -->
           <div v-else class="detail-content">
-            <!-- 自环组详情 -->
+            <!-- Self-loop Group Details -->
             <template v-if="selectedItem.data.isSelfLoopGroup">
               <div class="edge-relation-header self-loop-header">
                 {{ selectedItem.data.source_name }} - Self Relations
@@ -162,7 +162,7 @@
               </div>
             </template>
             
-            <!-- 普通边详情 -->
+            <!-- Regular Edge Details -->
             <template v-else>
               <div class="edge-relation-header">
                 {{ selectedItem.data.source_name }} → {{ selectedItem.data.name || 'RELATED_TO' }} → {{ selectedItem.data.target_name }}
@@ -208,20 +208,20 @@
         </div>
       </div>
       
-      <!-- 加载状态 -->
+      <!-- Loading State -->
       <div v-else-if="loading" class="graph-state">
         <div class="loading-spinner"></div>
-        <p>图谱数据加载中...</p>
+        <p>Loading graph data...</p>
       </div>
       
-      <!-- 等待/空状态 -->
+      <!-- Waiting/Empty State -->
       <div v-else class="graph-state">
         <div class="empty-icon">❖</div>
-        <p class="empty-text">等待本体生成...</p>
+        <p class="empty-text">Waiting for ontology generation...</p>
       </div>
     </div>
 
-    <!-- 底部图例 (Bottom Left) -->
+    <!-- Bottom Legend (Bottom Left) -->
     <div v-if="graphData && entityTypes.length" class="graph-legend">
       <span class="legend-title">Entity Types</span>
       <div class="legend-items">
@@ -232,7 +232,7 @@
       </div>
     </div>
     
-    <!-- 显示边标签开关 -->
+    <!-- Edge Labels Toggle -->
     <div v-if="graphData" class="edge-labels-toggle">
       <label class="toggle-switch">
         <input type="checkbox" v-model="showEdgeLabels" />
@@ -353,14 +353,23 @@ const renderGraph = () => {
   svg.selectAll('*').remove()
   
   const nodesData = props.graphData.nodes || []
-  const edgesData = props.graphData.edges || []
-  
+  let edgesData = props.graphData.edges || []
+
   if (nodesData.length === 0) return
+
+  // Performance guard: cap edges to prevent browser slowdown on large graphs.
+  // Keep the most recent edges (last in array = newest from Zep).
+  const MAX_RENDER_EDGES = 300
+  const isLargeGraph = edgesData.length > MAX_RENDER_EDGES
+  if (isLargeGraph) {
+    console.warn(`Graph has ${edgesData.length} edges, capping render to ${MAX_RENDER_EDGES} for performance`)
+    edgesData = edgesData.slice(-MAX_RENDER_EDGES)
+  }
 
   // Prep data
   const nodeMap = {}
   nodesData.forEach(n => nodeMap[n.uuid] = n)
-  
+
   const nodes = nodesData.map(n => ({
     id: n.uuid,
     name: n.name || 'Unnamed',
@@ -476,19 +485,22 @@ const renderGraph = () => {
   entityTypes.value.forEach(t => colorMap[t.name] = t.color)
   const getColor = (type) => colorMap[type] || '#999'
 
-  // Simulation - 根据边数量动态调整节点间距
+  // Simulation - scale forces based on graph size for performance
+  const nodeCount = nodes.length
+  const chargeStrength = nodeCount > 200 ? -150 : nodeCount > 100 ? -250 : -400
+  const collideRadius = nodeCount > 200 ? 25 : 50
+  const alphaDecay = nodeCount > 200 ? 0.05 : 0.0228 // default is ~0.0228
+
   const simulation = d3.forceSimulation(nodes)
+    .alphaDecay(alphaDecay)
     .force('link', d3.forceLink(edges).id(d => d.id).distance(d => {
-      // 根据这对节点之间的边数量动态调整距离
-      // 基础距离 150，每多一条边增加 40
-      const baseDistance = 150
+      const baseDistance = nodeCount > 200 ? 80 : 150
       const edgeCount = d.pairTotal || 1
-      return baseDistance + (edgeCount - 1) * 50
+      return baseDistance + (edgeCount - 1) * (nodeCount > 200 ? 20 : 50)
     }))
-    .force('charge', d3.forceManyBody().strength(-400))
+    .force('charge', d3.forceManyBody().strength(chargeStrength))
     .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collide', d3.forceCollide(50))
-    // 添加向中心的引力，让独立的节点群聚集到中心区域
+    .force('collide', d3.forceCollide(collideRadius))
     .force('x', d3.forceX(width / 2).strength(0.04))
     .force('y', d3.forceY(height / 2).strength(0.04))
   

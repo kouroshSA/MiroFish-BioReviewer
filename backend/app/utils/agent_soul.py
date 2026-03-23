@@ -1,6 +1,6 @@
 """
-Agent Soul配置加载器
-根据SIMULATION_MODE加载不同的实体类型、人设模板和行为映射
+Agent Soul Configuration Loader
+Loads different entity types, persona templates, and behavior mappings based on SIMULATION_MODE
 """
 
 import os
