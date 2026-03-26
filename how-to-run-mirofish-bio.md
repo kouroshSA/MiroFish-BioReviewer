@@ -136,7 +136,15 @@ npm run setup
 npm run setup:backend
 ```
 
-### 5. (Optional) Conda Environment
+### 5. Install LiteLLM (required for Claude proxy)
+
+> **Security Notice:** LiteLLM versions 1.82.7 and 1.82.8 were compromised in a supply chain attack (March 2026). Only install the pinned safe version. See [SECURITY.md](./SECURITY.md) for details.
+
+```bash
+pip install litellm==1.82.6
+```
+
+### 6. (Optional) Conda Environment
 
 If you prefer using conda:
 ```bash
