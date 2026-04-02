@@ -18,7 +18,7 @@ MiroFish is a multi-agent swarm intelligence engine that simulates digital world
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/666ghj/MiroFish.git
+git clone https://github.com/kouroshSA/MiroFish-Bio.git
 cd MiroFish
 ```
 

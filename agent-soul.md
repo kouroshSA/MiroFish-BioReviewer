@@ -5,7 +5,7 @@ Set `SIMULATION_MODE` in your `.env` file to activate a specific soul profile.
 
 Supported modes: `social` (default), `biological`, `custom`
 
-See also: `MED4-agent-soul.md` for a protein-interaction-network-specific configuration.
+See the AI-Guidelines-Agent-Soul.md for instructions on generating domain-specific configurations.
 
 ---
 
