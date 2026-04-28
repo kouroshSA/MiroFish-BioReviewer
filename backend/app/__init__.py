@@ -73,6 +73,30 @@ def create_app(config_class=Config):
     def health():
         return {'status': 'ok', 'service': 'MiroFish Backend'}
 
+    # Serve the built Vue frontend from frontend/dist when present (Colab path).
+    # Skipped during local dev where Vite handles the frontend on port 3000.
+    from flask import send_from_directory
+    frontend_dist = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', '..', 'frontend', 'dist'
+    ))
+    if os.path.isdir(frontend_dist):
+        if should_log_startup:
+            logger.info(f"Serving frontend from {frontend_dist}")
+
+        @app.route('/')
+        def _serve_index():
+            return send_from_directory(frontend_dist, 'index.html')
+
+        @app.route('/<path:path>')
+        def _serve_frontend(path):
+            # /api/* and /health are owned by blueprints; specific routes win,
+            # so we only get here for static assets and SPA URL paths.
+            full = os.path.join(frontend_dist, path)
+            if os.path.isfile(full):
+                return send_from_directory(frontend_dist, path)
+            # SPA fallback — Vue Router handles client-side routing
+            return send_from_directory(frontend_dist, 'index.html')
+
     if should_log_startup:
         logger.info("MiroFish Backend startup complete")
 

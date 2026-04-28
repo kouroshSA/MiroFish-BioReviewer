@@ -1,8 +1,14 @@
 import axios from 'axios'
 
-// Create axios instance
+// Create axios instance.
+// Default baseURL is empty (relative paths) so that:
+//  - Local dev (Vite on :3000): /api/* gets proxied to :5001 by vite.config.js
+//  - Production / Colab tunnel: Flask serves both the built frontend and /api/*
+//    on the same origin, so relative paths just work.
+// Override with VITE_API_BASE_URL=http://localhost:5001 when running the
+// frontend dev server against a remote backend.
 const service = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '',
   timeout: 300000, // 5-minute timeout (ontology generation may take a long time)
   headers: {
     'Content-Type': 'application/json'

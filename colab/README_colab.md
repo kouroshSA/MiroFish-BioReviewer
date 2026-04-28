@@ -7,15 +7,34 @@ Run MiroFish-BioReviewer directly in Google Colab without any local installation
 1. Click the badge below to open the notebook in Colab:
    [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/kouroshSA/MiroFish-BioReviewer/blob/main/colab/MiroFish_BioReviewer.ipynb)
 
-2. When the notebook opens, run Cell 1 (Setup). You will be prompted to enter:
-   - Your LLM API key (OpenAI, Anthropic, Gemini, DeepSeek, or Ollama endpoint)
-   - Your ZEP Cloud API key
-   - Your preferred model name
+2. Run Cells 2 and 3:
+   - **Cell 2 — Environment setup.** Auto-clones the repo, installs Python 3.11
+     (because `camel-oasis` doesn't support Colab's default 3.12), and installs
+     all dependencies into `/opt/mirofish_venv`.
+   - **Cell 3 — API keys.** Prompts (via `getpass`) for your LLM provider key
+     and your ZEP Cloud key. Keys live in session memory only.
 
-3. Upload your grant pre-proposal PDF when prompted in Cell 3.
+3. Pick your mode:
 
-4. Run all cells in order. The review report will be displayed inline and available
-   for download as a Markdown file.
+   ### 🌐 Live UI mode — recommended for students (Cell 4)
+   Cell 4 builds the Vue/Vite frontend, starts Flask in the background, and
+   uses Colab's `kernel.proxyPort` to give you a clickable URL. Open the URL
+   to use the full MiroFish-BioReviewer web UI in your browser:
+   - Upload the proposal in the UI
+   - Watch the **knowledge graph form node-by-node** as ZEP processes the text
+   - Watch the **swarm of biological agents** run round-by-round
+   - See the **3-agent reviewer panel** deliberate
+   - Read the structured review report inline, with the option to chat with
+     any agent
+
+   This is the only mode that exposes the live process — students will see
+   the graph and the simulation as they happen, which is the core learning
+   experience.
+
+   ### 🤖 Headless mode — optional (Cells 5b–8)
+   Skip Cell 4 and run Cells 5b through 8 to drive the same pipeline from
+   Python with no UI. You only see the final report. Useful for batch demos
+   or scripted comparisons.
 
 ## Notes
 - The Colab environment does not persist between sessions — you will be prompted
