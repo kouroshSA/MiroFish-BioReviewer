@@ -26,3 +26,42 @@ Run MiroFish-BioReviewer directly in Google Colab without any local installation
   use a Colab Pro runtime to avoid session timeouts.
 - The frontend UI is not available in Colab — the notebook runs the backend
   pipeline directly and renders the report inline.
+
+## Colab-only — do not run locally
+
+The notebook is hard-gated to Google Colab. Cell 2 will refuse to proceed on
+Windows/macOS/local Linux Jupyter and tell you why.
+
+The reason: `camel-oasis` and `camel-ai` (the swarm simulation engines) only
+ship pre-built wheels for Linux x86_64 / Python ≥3.10. On Windows or macOS,
+pip falls back to compiling from source, which is what produces the
+`Microsoft Visual C++ 14.0 or greater is required` error. We do not support
+that path because students should not need to install a 6 GB C++ toolchain.
+
+If you want to develop locally, use a Linux container or WSL2 — and then `pip
+install -r backend/requirements.txt` works normally.
+
+## Troubleshooting
+
+### "Microsoft Visual C++ 14.0 or greater is required"
+You opened the notebook in **VS Code**, **local Jupyter**, or **Anaconda
+Jupyter** on Windows — not in Google Colab. Open it via the Colab badge at
+the top of the README, or click here directly:
+[Open in Colab](https://colab.research.google.com/github/kouroshSA/MiroFish-BioReviewer/blob/main/colab/MiroFish_BioReviewer.ipynb).
+The URL bar must say `colab.research.google.com`.
+
+### Cell 2 hangs or times out installing dependencies
+The first install can take 2–4 minutes. If it stalls beyond that:
+1. **Runtime → Restart runtime**
+2. Re-run Cell 2
+
+### `Cell 6` raises `ModuleNotFoundError`
+Cell 2 finished but a package didn't actually install. **Runtime → Restart
+runtime**, then re-run Cell 2 — its smoke-import step at the end will tell
+you which package is missing.
+
+### `Cell 6` exits with non-zero status mid-pipeline
+Most common cause is an exhausted ZEP free-tier quota or an LLM API rate
+limit. Check the printed traceback. The pipeline writes partial state under
+`backend/uploads/` so you can resume by lowering the round count in Cell 5
+and re-running Cell 6.
