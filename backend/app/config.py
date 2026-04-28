@@ -36,8 +36,16 @@ class Config:
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
 
     # Agent Soul / Simulation Mode configuration
-    SIMULATION_MODE = os.environ.get('SIMULATION_MODE', 'social')  # social, biological, custom
+    SIMULATION_MODE = os.environ.get('SIMULATION_MODE', 'social')  # social, biological, custom, grant_review
     AGENT_SOUL_PATH = os.environ.get('AGENT_SOUL_PATH', os.path.join(os.path.dirname(__file__), '../../agent-soul.md'))
+    GRANT_REVIEW_SOUL_PATH = os.environ.get('GRANT_REVIEW_SOUL_PATH', os.path.join(os.path.dirname(__file__), '../../grant-review-soul.md'))
+
+    # Reviewer Panel configuration (grant_review mode only)
+    REVIEWER_PANEL_ENABLED = os.environ.get('REVIEWER_PANEL_ENABLED', 'true').lower() == 'true'
+    REVIEWER_MECHANIST_TEMPERATURE = float(os.environ.get('REVIEWER_MECHANIST_TEMPERATURE', '0.3'))
+    REVIEWER_VISIONARY_TEMPERATURE = float(os.environ.get('REVIEWER_VISIONARY_TEMPERATURE', '0.7'))
+    REVIEWER_REALIST_TEMPERATURE = float(os.environ.get('REVIEWER_REALIST_TEMPERATURE', '0.4'))
+    REVIEWER_MAX_TOKENS = int(os.environ.get('REVIEWER_MAX_TOKENS', '800'))
 
     # File upload configuration
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB

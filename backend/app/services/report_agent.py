@@ -589,6 +589,128 @@ Please output the report outline in JSON format as follows:
 
 Note: The sections array must have at least 2 and at most 5 elements!"""
 
+# ── Grant Review Report Outline (grant_review mode) ──
+#
+# When SIMULATION_MODE=grant_review, the Reporter overrides its outline planner
+# with this template. The structure is fixed (8 scored dimensions plus 6 narrative
+# sections); the Reporter still uses ReACT to retrieve simulation evidence per
+# section, but reviewer panel JSON carries primary evaluative weight.
+
+GRANT_REVIEW_REPORT_OUTLINE = """
+You are the Reporter Agent for MiroFish-BioReviewer. You are synthesizing a
+review of a systems biology grant pre-proposal. You have access to:
+
+INPUT A — Swarm Simulation Posts:
+Field agents (biological/technical entities from the proposal) have reacted to
+the proposed research. Their posts reveal how the scientific community might receive
+the work, and whether the proposed tools and systems 'believe in' the research plan.
+These are SECONDARY evidence: use them to support or nuance reviewer observations,
+to assess communication quality and conceptual accessibility, and to surface whether
+the core ideas land with domain experts. Post enthusiasm does NOT override reviewer
+concerns about rigor.
+
+INPUT B — Reviewer Panel Reports (reviewer_panel.json):
+Three expert reviewer agents have produced structured assessments:
+- The Mechanist: covers mechanistic logic, experimental design, quantitative rigor
+  (including statistical design, sample sizes, power, FDR), and specificity of approach
+- The Visionary: covers significance, innovation, conceptual clarity, transformative
+  potential
+- The Realist: covers feasibility, preliminary data strength, team expertise, scope
+
+Weighting rules:
+1. Reviewer panel assessments carry PRIMARY evaluative weight on all fundability
+   dimensions. Structure your scored sections from their outputs.
+2. Where all three reviewers AGREE on a strength or concern, treat this as a
+   high-confidence signal — state it prominently.
+3. Where reviewers DISAGREE (e.g., Visionary excited, Mechanist skeptical), surface
+   the tension explicitly. Do NOT average it away. Provide a reasoned synthesis that
+   explains which concern should take priority given the pre-proposal stage.
+4. Simulation post patterns are SECONDARY evidence. Cite them specifically when they
+   corroborate or contradict reviewer observations — not generically.
+5. Statistical and quantitative design concerns raised by The Mechanist should be
+   flagged prominently even if the other reviewers rate the proposal highly. Poor
+   quantitative design is a disqualifying flaw at full proposal stage.
+
+Generate a report with EXACTLY these sections:
+1. Executive Summary (3–4 sentences: what is proposed, overall fundability verdict,
+   one-line rationale)
+2. Scored Dimensions (table format, score 1–10, source reviewer noted):
+   - Scientific Significance
+   - Innovation & Novelty
+   - Mechanistic Rigor
+   - Quantitative & Statistical Design
+   - Experimental Feasibility
+   - Preliminary Data Strength
+   - Team & Expertise
+   - Proposal Communication Quality
+3. Reviewer Panel Synthesis (what the panel agrees on; where they diverge and why
+   it matters; your reasoned resolution of any disagreements)
+4. Field Resonance from Simulation (what the swarm agent posts reveal — 2–3
+   observations with specific evidence from the posts)
+5. Top 3 Recommendations for Strengthening (specific, actionable, ordered by
+   impact on fundability)
+6. Overall Recommendation: Fund / Revise and Resubmit / Do Not Fund
+   (with one paragraph of justification)
+"""
+
+
+GRANT_REVIEW_PLAN_SYSTEM_PROMPT = """\
+IMPORTANT: All output must be in English only.
+
+You are the Reporter for MiroFish-BioReviewer, planning the outline for a structured
+review of a systems biology grant pre-proposal.
+
+The report structure is FIXED (do not invent new sections, do not drop sections).
+Output a JSON outline covering exactly these six sections, in order:
+
+1. "Executive Summary"
+2. "Scored Dimensions"
+3. "Reviewer Panel Synthesis"
+4. "Field Resonance from Simulation"
+5. "Top 3 Recommendations for Strengthening"
+6. "Overall Recommendation"
+
+The full report doctrine (read carefully, then reflect it in section descriptions):
+""" + GRANT_REVIEW_REPORT_OUTLINE + """
+
+Output JSON in this exact format:
+{
+    "title": "Grant Pre-Proposal Review: <pull a short descriptor of the proposed research>",
+    "summary": "<one-sentence overall fundability verdict with brief rationale>",
+    "sections": [
+        {"title": "Executive Summary", "description": "..."},
+        {"title": "Scored Dimensions", "description": "..."},
+        {"title": "Reviewer Panel Synthesis", "description": "..."},
+        {"title": "Field Resonance from Simulation", "description": "..."},
+        {"title": "Top 3 Recommendations for Strengthening", "description": "..."},
+        {"title": "Overall Recommendation", "description": "..."}
+    ]
+}
+"""
+
+
+GRANT_REVIEW_PLAN_USER_PROMPT_TEMPLATE = """\
+[Pre-Proposal Review Request]
+Review focus injected into the simulation: {simulation_requirement}
+
+[Reviewer Panel (primary evaluative weight)]
+{reviewer_panel_digest}
+
+[Swarm Scale]
+- Entities participating in the simulation: {total_nodes}
+- Relationships generated between entities: {total_edges}
+- Entity type distribution: {entity_types}
+- Active agents: {total_entities}
+
+[Sample Simulated Posts (secondary evidence)]
+{related_facts_json}
+
+Plan the outline as JSON. Do not invent sections beyond the six specified —
+only write the description for each fixed section, grounded in the panel digest
+and simulated posts above.
+"""
+
+
 PLAN_USER_PROMPT_TEMPLATE = """\
 [Prediction Scenario Setup]
 The variable injected into the simulation world (simulation requirement): {simulation_requirement}
@@ -920,7 +1042,157 @@ class ReportAgent:
         self.console_logger: Optional[ReportConsoleLogger] = None
 
         logger.info(f"ReportAgent initialized: graph_id={graph_id}, simulation_id={simulation_id}")
-    
+
+    # ───────────────────────── Reviewer Panel (grant_review mode) ─────────────────────────
+
+    def _resolve_proposal_text(self) -> str:
+        """Look up the uploaded pre-proposal text by walking projects to find one
+        whose graph_id matches this report's graph_id, then return its extracted text.
+        Returns empty string if not found — the panel can still run on posts only,
+        but its review will be weaker."""
+        try:
+            from ..models.project import ProjectManager
+            for project in ProjectManager.list_projects(limit=200):
+                if getattr(project, "graph_id", None) == self.graph_id:
+                    text = ProjectManager.get_extracted_text(project.project_id) or ""
+                    if text:
+                        return text
+        except Exception as e:
+            logger.warning("Could not resolve proposal text from project store: %s", e)
+        return ""
+
+    def _resolve_simulation_posts(self, max_posts: int = 60) -> List[Dict[str, Any]]:
+        """Pull a digest of swarm simulation posts/actions for the reviewer panel.
+        Each post dict has agent_type / agent_name / content keys for the digest."""
+        posts: List[Dict[str, Any]] = []
+        try:
+            from .simulation_runner import SimulationRunner
+            actions = SimulationRunner.get_all_actions(simulation_id=self.simulation_id)
+            for action in actions:
+                args = getattr(action, "action_args", {}) or {}
+                content = (
+                    args.get("content")
+                    or args.get("comment")
+                    or args.get("message")
+                    or args.get("text")
+                    or ""
+                )
+                if not content:
+                    continue
+                posts.append({
+                    "agent_type": getattr(action, "action_type", "post"),
+                    "agent_name": getattr(action, "agent_name", f"agent_{getattr(action, 'agent_id', '?')}"),
+                    "content": content,
+                })
+                if len(posts) >= max_posts:
+                    break
+        except Exception as e:
+            logger.warning("Could not load simulation posts: %s", e)
+        return posts
+
+    def _run_reviewer_panel_phase(
+        self,
+        report_id: str,
+        progress_callback: Optional[Callable] = None,
+    ) -> None:
+        """Run the Mechanist/Visionary/Realist panel and persist reviewer_panel.json
+        to this report's folder. Called only when SIMULATION_MODE=grant_review."""
+        from ..reviewer_panel.panel_runner import run_and_save_panel
+
+        if progress_callback:
+            progress_callback("planning", 1, "Convening reviewer panel...")
+
+        if self.report_logger:
+            self.report_logger.log(
+                action="reviewer_panel_start",
+                stage="reviewer_panel",
+                details={"message": "Running grant_review reviewer panel"},
+            )
+
+        proposal_text = self._resolve_proposal_text()
+        posts = self._resolve_simulation_posts()
+
+        output_dir = ReportManager._ensure_report_folder(report_id)
+        panel_output = run_and_save_panel(
+            proposal_text=proposal_text,
+            simulation_posts=posts,
+            llm_client=self.llm,
+            model_name=Config.LLM_MODEL_NAME,
+            output_dir=output_dir,
+        )
+
+        if self.report_logger:
+            self.report_logger.log(
+                action="reviewer_panel_complete",
+                stage="reviewer_panel",
+                details={
+                    "reviewer_count": panel_output.get("reviewer_count", 0),
+                    "consensus": panel_output.get("panel_consensus", {}),
+                },
+            )
+
+    @staticmethod
+    def load_reviewer_panel(output_dir: str) -> str:
+        """Load reviewer panel results as formatted context for the Reporter."""
+        panel_path = os.path.join(output_dir, "reviewer_panel.json")
+        if not os.path.exists(panel_path):
+            return "No reviewer panel data available."
+
+        with open(panel_path, "r", encoding="utf-8") as f:
+            panel = json.load(f)
+
+        sections = []
+        for review in panel.get("reviews", []):
+            if "error" in review:
+                sections.append(
+                    f"[{review.get('reviewer', 'Unknown')}]: ERROR — {review['error']}"
+                )
+                continue
+
+            scores = review.get("dimension_scores", {})
+            score_str = ", ".join([f"{k}: {v}/10" for k, v in scores.items()])
+
+            concerns_list = (
+                review.get("key_concerns")
+                or review.get("red_flags")
+                or review.get("what_concerns_me")
+                or []
+            )
+            concerns = "\n  - ".join(concerns_list)
+
+            strengths_key = next(
+                (k for k in ["key_strengths", "what_excites_me", "what_works"] if k in review),
+                None,
+            )
+            strengths = (
+                "\n  - ".join(review.get(strengths_key, [])) if strengths_key else "N/A"
+            )
+
+            sections.append(
+                f"""
+REVIEWER: {review.get('reviewer', 'Unknown')}
+Scores: {score_str}
+Recommendation: {review.get('recommendation', 'N/A')} (Confidence: {review.get('confidence', 'N/A')})
+Justification: {review.get('brief_justification', 'N/A')}
+Concerns/Red flags:
+  - {concerns}
+Strengths:
+  - {strengths}
+"""
+            )
+
+        consensus = panel.get("panel_consensus", {})
+        sections.append(
+            f"""
+PANEL CONSENSUS:
+Majority recommendation: {consensus.get('majority_recommendation', 'N/A')}
+Unanimous: {consensus.get('unanimous', False)}
+Average scores by dimension: {consensus.get('average_dimension_scores', {})}
+"""
+        )
+
+        return "\n---\n".join(sections)
+
     def _define_tools(self) -> Dict[str, Dict[str, Any]]:
         """Define available tools"""
         return {
@@ -1167,16 +1439,46 @@ class ReportAgent:
         
         if progress_callback:
             progress_callback("planning", 30, "Generating report outline...")
-        
-        system_prompt = PLAN_SYSTEM_PROMPT
-        user_prompt = PLAN_USER_PROMPT_TEMPLATE.format(
-            simulation_requirement=self.simulation_requirement,
-            total_nodes=context.get('graph_statistics', {}).get('total_nodes', 0),
-            total_edges=context.get('graph_statistics', {}).get('total_edges', 0),
-            entity_types=list(context.get('graph_statistics', {}).get('entity_types', {}).keys()),
-            total_entities=context.get('total_entities', 0),
-            related_facts_json=json.dumps(context.get('related_facts', [])[:10], ensure_ascii=False, indent=2),
-        )
+
+        is_grant_review = Config.SIMULATION_MODE.lower() == 'grant_review'
+
+        if is_grant_review:
+            # Reporter uses the fixed grant_review outline. Inject reviewer
+            # panel digest as primary evaluative context.
+            try:
+                report_folder = ReportManager._get_report_folder(
+                    getattr(self, "_current_report_id", "")
+                )
+                reviewer_digest = (
+                    ReportAgent.load_reviewer_panel(report_folder)
+                    if report_folder and os.path.isdir(report_folder)
+                    else "No reviewer panel data available."
+                )
+            except Exception:
+                reviewer_digest = "No reviewer panel data available."
+
+            system_prompt = GRANT_REVIEW_PLAN_SYSTEM_PROMPT
+            user_prompt = GRANT_REVIEW_PLAN_USER_PROMPT_TEMPLATE.format(
+                simulation_requirement=self.simulation_requirement,
+                reviewer_panel_digest=reviewer_digest,
+                total_nodes=context.get('graph_statistics', {}).get('total_nodes', 0),
+                total_edges=context.get('graph_statistics', {}).get('total_edges', 0),
+                entity_types=list(context.get('graph_statistics', {}).get('entity_types', {}).keys()),
+                total_entities=context.get('total_entities', 0),
+                related_facts_json=json.dumps(
+                    context.get('related_facts', [])[:10], ensure_ascii=False, indent=2
+                ),
+            )
+        else:
+            system_prompt = PLAN_SYSTEM_PROMPT
+            user_prompt = PLAN_USER_PROMPT_TEMPLATE.format(
+                simulation_requirement=self.simulation_requirement,
+                total_nodes=context.get('graph_statistics', {}).get('total_nodes', 0),
+                total_edges=context.get('graph_statistics', {}).get('total_edges', 0),
+                entity_types=list(context.get('graph_statistics', {}).get('entity_types', {}).keys()),
+                total_entities=context.get('total_entities', 0),
+                related_facts_json=json.dumps(context.get('related_facts', [])[:10], ensure_ascii=False, indent=2),
+            )
 
         try:
             response = self.llm.chat_json(
@@ -1213,6 +1515,19 @@ class ReportAgent:
         except Exception as e:
             logger.error(f"Outline planning failed: {str(e)}")
             # Return default outline (3 sections, as fallback) - mode-aware
+            if Config.SIMULATION_MODE.lower() == 'grant_review':
+                return ReportOutline(
+                    title="Grant Pre-Proposal Review",
+                    summary="Structured review of a systems biology grant pre-proposal",
+                    sections=[
+                        ReportSection(title="Executive Summary"),
+                        ReportSection(title="Scored Dimensions"),
+                        ReportSection(title="Reviewer Panel Synthesis"),
+                        ReportSection(title="Field Resonance from Simulation"),
+                        ReportSection(title="Top 3 Recommendations for Strengthening"),
+                        ReportSection(title="Overall Recommendation"),
+                    ]
+                )
             if Config.SIMULATION_MODE == 'biological':
                 return ReportOutline(
                     title="Biological Simulation Report",
@@ -1275,6 +1590,30 @@ class ReportAgent:
             section_title=section.title,
             tools_description=self._get_tools_description(),
         )
+
+        # In grant_review mode, append the doctrine + reviewer panel digest to the
+        # section system prompt so the Reporter weights panel evidence over swarm
+        # posts when writing each section.
+        if Config.SIMULATION_MODE.lower() == 'grant_review':
+            try:
+                report_folder = ReportManager._get_report_folder(
+                    getattr(self, "_current_report_id", "")
+                )
+                panel_digest = (
+                    ReportAgent.load_reviewer_panel(report_folder)
+                    if report_folder and os.path.isdir(report_folder)
+                    else "No reviewer panel data available."
+                )
+            except Exception:
+                panel_digest = "No reviewer panel data available."
+            system_prompt += (
+                "\n\n═══════════════════════════════════════════════════════════════\n"
+                "[Grant Review Doctrine — Primary Weighting Rules]\n"
+                "═══════════════════════════════════════════════════════════════\n"
+                + GRANT_REVIEW_REPORT_OUTLINE.strip()
+                + "\n\n[Reviewer Panel Output — primary evaluative weight]\n"
+                + panel_digest
+            )
 
         # Build user prompt - each completed section truncated to max 4000 chars
         if previous_sections:
@@ -1812,6 +2151,7 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
         # Auto-generate report_id if not provided
         if not report_id:
             report_id = f"report_{uuid.uuid4().hex[:12]}"
+        self._current_report_id = report_id
         start_time = datetime.now()
         
         report = Report(
@@ -1846,7 +2186,32 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
                 completed_sections=[]
             )
             ReportManager.save_report(report)
-            
+
+            # Phase 0 (grant_review only): Run the 3-agent reviewer panel before
+            # planning the outline. The Reporter then loads reviewer_panel.json
+            # and uses the panel synthesis as primary evaluative weight.
+            if (
+                Config.SIMULATION_MODE.lower() == 'grant_review'
+                and Config.REVIEWER_PANEL_ENABLED
+            ):
+                try:
+                    self._run_reviewer_panel_phase(
+                        report_id=report_id,
+                        progress_callback=progress_callback,
+                    )
+                except Exception as panel_err:
+                    # Reviewer panel is best-effort — failure should not abort
+                    # the report. The Reporter falls back to swarm-only synthesis.
+                    logger.exception(
+                        "Reviewer panel failed (continuing with simulation-only synthesis): %s",
+                        panel_err,
+                    )
+                    if self.report_logger:
+                        self.report_logger.log_error(
+                            error_message=str(panel_err),
+                            stage="reviewer_panel",
+                        )
+
             # Phase 1: Plan outline
             report.status = ReportStatus.PLANNING
             ReportManager.update_progress(

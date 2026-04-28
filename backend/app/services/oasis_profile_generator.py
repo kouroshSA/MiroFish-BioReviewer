@@ -22,12 +22,14 @@ from zep_cloud.client import Zep
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.agent_soul import (
-    is_biological_mode, get_simulation_mode,
+    is_biological_mode, is_grant_review_mode, get_simulation_mode,
     BIOLOGICAL_INDIVIDUAL_ENTITY_TYPES,
     BIOLOGICAL_GROUP_ENTITY_TYPES,
     BIOLOGICAL_PERSONA_SYSTEM_PROMPT,
     build_biological_individual_prompt,
     build_biological_group_prompt,
+    build_grant_review_individual_prompt,
+    build_grant_review_group_prompt,
 )
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
@@ -526,7 +528,19 @@ class OasisProfileGenerator:
         # In biological mode, entities come from ZEP as Person/Organization,
         # but we generate personas that blend biological identity with social
         # behavior. The biological context from the document shapes the personality.
-        if is_biological_mode():
+        if is_grant_review_mode():
+            # grant_review mode: entities are CRISPR tools, guide RNAs, target loci,
+            # delivery vectors, host systems, pathways from the proposal — generate
+            # personas using the SynBio soul guidance from grant-review-soul.md.
+            if is_individual:
+                prompt = build_grant_review_individual_prompt(
+                    entity_name, entity_type, entity_summary, entity_attributes, context
+                )
+            else:
+                prompt = build_grant_review_group_prompt(
+                    entity_name, entity_type, entity_summary, entity_attributes, context
+                )
+        elif is_biological_mode():
             # Use biological prompts — these generate molecular personas
             # framed as social media characters whose personality reflects
             # their biological function.
@@ -699,6 +713,20 @@ class OasisProfileGenerator:
 
     def _get_system_prompt(self, is_individual: bool) -> str:
         """Get system prompt"""
+        if is_grant_review_mode():
+            return (
+                "You are an expert at creating vivid character personas inspired by "
+                "synthetic and systems biology. Each entity from a grant pre-proposal "
+                "(CRISPR tool, guide RNA, target locus, delivery vector, regulatory "
+                "element, pathway, or host system) becomes a character whose personality "
+                "and stance toward the proposed research is shaped by its biological "
+                "function and graph context. The dramatic tension to surface is DESIGN "
+                "vs. EMERGENCE — designed parts are confident and goal-directed; "
+                "biological systems push back. "
+                "IMPORTANT: Keep all responses short and concise. Be brief — quality over quantity. "
+                "You must return valid JSON. "
+                "All string values must not contain unescaped newlines. Use English."
+            )
         if is_biological_mode():
             return BIOLOGICAL_PERSONA_SYSTEM_PROMPT
         base_prompt = "You are an expert in social media user profile generation. IMPORTANT: All output must be in English only. Do not use any other language. Generate detailed, realistic personas for public opinion simulation, restoring existing real-world situations as much as possible. You must return valid JSON format, and all string values must not contain unescaped newline characters."
@@ -814,8 +842,10 @@ Important:
     ) -> Dict[str, Any]:
         """Generate basic persona using rules"""
 
-        # Biological mode: generate molecular profile
-        if is_biological_mode():
+        # grant_review mode: reuse the biological rule-based fallback —
+        # it produces a generic SynBio-flavored character that the LLM-driven
+        # path is the primary source of personas anyway.
+        if is_grant_review_mode() or is_biological_mode():
             return self._generate_biological_profile_rule_based(
                 entity_name, entity_type, entity_summary, entity_attributes
             )

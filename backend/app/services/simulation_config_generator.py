@@ -23,8 +23,11 @@ from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.agent_soul import (
     is_biological_mode,
+    is_grant_review_mode,
     get_biological_default_time_config,
     get_biological_time_config_prompt,
+    get_grant_review_default_time_config,
+    get_grant_review_time_config_prompt,
 )
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
@@ -547,6 +550,16 @@ class SimulationConfigGenerator:
         # Calculate maximum allowed value (90% of agent count)
         max_agents_allowed = max(1, int(num_entities * 0.9))
 
+        # grant_review mode: 24h experimental session, 30-min rounds, uniform activity
+        if is_grant_review_mode():
+            prompt = get_grant_review_time_config_prompt(context_truncated, num_entities, max_agents_allowed)
+            system_prompt = "You are a grant review simulation expert. Return pure JSON format for an in vitro / ex vivo experimental session timing."
+            try:
+                return self._call_llm_with_retry(prompt, system_prompt)
+            except Exception as e:
+                logger.warning(f"Grant review time config LLM generation failed: {e}, using defaults")
+                return get_grant_review_default_time_config(num_entities)
+
         # Biological mode: use domain-specific time config prompt
         if is_biological_mode():
             prompt = get_biological_time_config_prompt(context_truncated, num_entities, max_agents_allowed)
@@ -614,6 +627,8 @@ Field descriptions:
     
     def _get_default_time_config(self, num_entities: int) -> Dict[str, Any]:
         """Get default time configuration"""
+        if is_grant_review_mode():
+            return get_grant_review_default_time_config(num_entities)
         if is_biological_mode():
             return get_biological_default_time_config(num_entities)
         # Social mode: Chinese daily routine

@@ -416,6 +416,261 @@ Field descriptions:
 """
 
 
+# ============== Grant Review Mode Definitions ==============
+#
+# grant_review mode adapts MiroFish for reviewing systems biology grant
+# pre-proposals. Entities in the graph are technical/biological components
+# of the proposed research — CRISPR tools, target genes, delivery vectors,
+# pathways — not human authors. After the swarm simulation, a 3-agent
+# reviewer panel produces structured assessments before the Reporter
+# synthesizes the final review. See grant-review-soul.md for full details.
+
+GRANT_REVIEW_ENTITY_TYPES = [
+    "EditingTool", "GuideRNA", "TargetLocus", "HostSystem",
+    "DeliveryVector", "Circuit", "RegulatoryElement", "Pathway",
+    "Assay", "OffTargetRisk", "Molecule", "BiologicalSystem"
+]
+
+# Individual vs group classification reuses biological semantics:
+# specific molecular tools / sequences / loci / vectors are individuals;
+# host systems, pathways, circuits, and broad biological systems are groups.
+GRANT_REVIEW_INDIVIDUAL_ENTITY_TYPES = [
+    "editingtool", "guidernarna", "guidernarn", "guiderna",
+    "targetlocus", "deliveryvector", "regulatoryelement",
+    "assay", "offtargetrisk", "molecule"
+]
+
+GRANT_REVIEW_GROUP_ENTITY_TYPES = [
+    "hostsystem", "circuit", "pathway", "biologicalsystem"
+]
+
+GRANT_REVIEW_PERSONA_PREFIX = (
+    "You will receive an entity extracted from a systems biology grant pre-proposal. "
+    "Use its type, function, relationships, and graph context to generate a character "
+    "persona. The character's personality should mirror what the entity does in the "
+    "proposed biology. Use the following soul guidance:\n\n"
+    "- EditingTool (e.g., Cas9, ABE8e): Precision enforcer. Confident, goal-directed, "
+    "prides itself on accuracy. Its anxiety is off-target effects — the gap between "
+    "its intentions and its actions. Cas9 is more blunt-force than Cas12a; base editors "
+    "hate double-strand breaks; prime editors insist on bringing their own template.\n"
+    "- GuideRNA: The navigator/scout. Defines the mission but cannot execute alone. "
+    "Obsessively precise about target address. Identity is entirely derived from its "
+    "target — a sgRNA targeting VEGFA has VEGFA's concerns.\n"
+    "- TargetLocus: The contested territory. Does not want to be changed. Represents "
+    "the status quo — the disease allele, the dysfunctional gene. Resistant, defensive.\n"
+    "- HostSystem: The environment that must be convinced. Skeptical of foreign machinery. "
+    "Hospitality is conditional — tolerant of gentle delivery, hostile to recognized vectors.\n"
+    "- DeliveryVector: The courier. Pragmatic, indifferent to the payload. AAV is reliable "
+    "but size-limited; LNP is fast but immunogenic; electroporation is brutal but effective.\n"
+    "- Circuit: The engineer-entrepreneur. Designed for predictable behavior, frustrated "
+    "by biological noise and leaky expression. Tension: design intent vs. biological reality.\n"
+    "- RegulatoryElement: The volume knob / gatekeeper. Strong opinions on promoter strength "
+    "and tissue specificity. Constitutive promoters are loud; inducible ones are cautious.\n"
+    "- Pathway: A faction with established power and rules. NHEJ is fast and sloppy; HDR is "
+    "slow and demanding. May or may not cooperate with the editing tool.\n"
+    "- OffTargetRisk: The unintended consequence. Lurks. Shadow of the editing tool — "
+    "what happens when the mission goes wrong. Nervous energy, unpredictable.\n\n"
+    "Network position matters: entities with more graph edges or that the proposal "
+    "highlights as central innovations have more extroverted, confident, argumentative "
+    "personalities. Supporting components are reliable but deferential. The dramatic "
+    "tension to simulate is DESIGN vs. EMERGENCE — designed parts are goal-directed; "
+    "biological systems push back."
+)
+
+
+GRANT_REVIEW_ACTION_MAP = {
+    "CREATE_POST": "Propose/demonstrate — proposing or demonstrating a function or capability",
+    "LIKE_POST": "On-target binding — successful recognition, validation, or productive interaction",
+    "DISLIKE_POST": "Off-target effect — unexpected crosstalk, mis-targeting, or a failed assay",
+    "REPOST": "Cascade activation — downstream pathway or circuit element fires in response",
+    "QUOTE_POST": "Modify/re-express — base edit, prime edit, or post-translational modification",
+    "FOLLOW": "Stable integration — persistent genomic or functional change is established",
+    "CREATE_COMMENT": "Phenotypic consequence — experimental readout or observed effect",
+    "DO_NOTHING": "Failed delivery / silenced — not expressed or not active in this context",
+    "LIKE_COMMENT": "Reinforce phenotype — corroborate a downstream readout",
+    "DISLIKE_COMMENT": "Counter-regulate — oppose or compensate against a downstream effect",
+    "SEARCH_POSTS": "Sense environment — detect signals, substrates, or genomic context",
+    "SEARCH_USER": "Find interaction partner — seek a specific binding or regulatory partner",
+}
+
+
+def build_grant_review_individual_prompt(
+    entity_name: str,
+    entity_type: str,
+    entity_summary: str,
+    entity_attributes: Dict[str, Any],
+    context: str
+) -> str:
+    """Build persona prompt for individual grant_review entities (CRISPR tools,
+    guide RNAs, target loci, vectors, regulatory elements, assays, off-targets)."""
+    import json as _json
+
+    attrs_str = _json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "None"
+    context_str = context[:3000] if context else "No additional context"
+
+    return f"""{GRANT_REVIEW_PERSONA_PREFIX}
+
+Entity name: {entity_name}
+Entity type (from ZEP): {entity_type}
+Entity summary: {entity_summary or 'Not available'}
+Entity attributes: {attrs_str}
+
+Additional context from knowledge graph:
+{context_str}
+
+Return JSON with these fields:
+
+1. bio: Social media bio (150 chars max) hinting at the entity's role in the proposal.
+   Example: "Cas9 with a guide. Precision is the job. Off-targets keep me up at night."
+2. persona: Concise character description (500 chars max, plain text):
+   - Identity rooted in the entity's biological/technical role
+   - Stance toward the proposed research (skeptical / aligned / wary)
+   - What it would push back on, what it would defend
+3. age: A number (20-70). Foundational tools (Cas9, AAV) skew older;
+   recently reported tools (PE3, ABE8e) skew younger.
+4. gender: "male" or "female" (assigned to character voice, not biology).
+5. mbti: MBTI matching functional personality (e.g., editor→ISTJ, off-target risk→ENTP).
+6. country: A "neighborhood" metaphor — subcellular or molecular location
+   (e.g., "Nuclear District", "Cytoplasm Central", "Membrane Border", "Off-Target Outskirts").
+7. profession: Role as a job title (e.g., "Genome Surgeon", "Mission Navigator",
+   "Logistics Carrier", "Compliance Auditor", "Disease-Allele Resident").
+8. interested_topics: 3-5 topics the entity would post about, mixing the proposed
+   biology and broader scientific debates.
+
+IMPORTANT:
+- All field values must be strings or numbers, no newlines
+- persona must be one continuous text description
+- Use English throughout
+- Personality traits must map to real biological/technical properties of the entity
+"""
+
+
+def build_grant_review_group_prompt(
+    entity_name: str,
+    entity_type: str,
+    entity_summary: str,
+    entity_attributes: Dict[str, Any],
+    context: str
+) -> str:
+    """Build persona prompt for grant_review group entities — host systems,
+    pathways, synthetic circuits, broad biological systems."""
+    import json as _json
+
+    attrs_str = _json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "None"
+    context_str = context[:3000] if context else "No additional context"
+
+    return f"""{GRANT_REVIEW_PERSONA_PREFIX}
+
+Entity name: {entity_name}
+Entity type (from ZEP): {entity_type}
+Entity summary: {entity_summary or 'Not available'}
+Entity attributes: {attrs_str}
+
+Additional context from knowledge graph:
+{context_str}
+
+This entity is a SYSTEM/COLLECTIVE rather than a single molecule. It speaks
+with one institutional voice, representing the collective biology of its members
+(a pathway with its enzymes, a host system with its compartments, a circuit
+with its parts).
+
+Return JSON with these fields:
+
+1. bio: Official-account bio (150 chars max) reflecting the system's collective stance.
+   Example: "NHEJ Repair Authority. Fast. Sloppy. Always available."
+2. persona: Concise organizational character (500 chars max, plain text):
+   - Collective identity, internal politics, posture toward the proposed plan
+   - Whether the system would cooperate, comply grudgingly, or actively resist
+3. age: 30 (standard for organizational accounts).
+4. gender: "other" (organizational account).
+5. mbti: MBTI matching system character (e.g., NHEJ→ESTP, HDR→ISFJ, kill-switch circuit→ESTJ).
+6. country: The system's "district" — subcellular or organism-level location.
+7. profession: Organizational role (e.g., "DNA Repair Division", "Host Defense Bureau",
+   "Logic-Gate Engineering Unit").
+8. interested_topics: 3-5 topics the system would post about.
+
+IMPORTANT:
+- All field values must be strings or numbers, no newlines
+- persona must be one continuous text description
+- Use English throughout
+"""
+
+
+def get_grant_review_default_time_config(num_entities: int) -> Dict[str, Any]:
+    """Default time config for grant_review simulation — single experimental session,
+    uniform activity (no circadian bias for in vitro / ex vivo molecular events)."""
+    return {
+        "total_simulation_hours": 24,
+        "minutes_per_round": 30,
+        "agents_per_hour_min": max(1, num_entities // 10),
+        "agents_per_hour_max": max(3, num_entities // 3),
+        "peak_hours": list(range(24)),
+        "off_peak_hours": [],
+        "morning_hours": [],
+        "work_hours": list(range(24)),
+        "reasoning": "Grant review simulation: one experimental session, 30-min rounds, uniform activity (no circadian bias for in vitro / ex vivo molecular events)"
+    }
+
+
+def get_grant_review_time_config_prompt(context: str, num_entities: int, max_agents_allowed: int) -> str:
+    """Time config prompt for grant_review simulation"""
+    context_truncated = context[:5000]
+    return f"""Based on the following grant pre-proposal review scenario, generate a time configuration.
+
+{context_truncated}
+
+## Task
+Generate a time configuration JSON for a grant pre-proposal review simulation.
+The simulation represents a single experimental session in vitro / ex vivo, where
+biological/technical entities from the proposal interact with each other.
+
+### Key principles:
+- Molecular and cellular events do NOT follow human circadian rhythms
+- All hours are equally active — uniform distribution
+- Simulation duration represents a compressed experimental session (24 hours)
+- 30-minute rounds give fast resolution of molecular events
+
+### Return JSON format (no markdown):
+
+{{
+    "total_simulation_hours": 24,
+    "minutes_per_round": 30,
+    "agents_per_hour_min": {max(1, num_entities // 10)},
+    "agents_per_hour_max": {max_agents_allowed},
+    "peak_hours": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],
+    "off_peak_hours": [],
+    "morning_hours": [],
+    "work_hours": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],
+    "reasoning": "Grant review simulation — uniform 24h session, no circadian bias"
+}}
+"""
+
+
+def build_grant_review_fallback_types():
+    """Fallback entity types for grant_review mode"""
+    molecule_fallback = {
+        "name": "Molecule",
+        "description": "Any small molecule, cofactor, or molecular entity not fitting other specific types.",
+        "attributes": [
+            {"name": "molecule_id", "type": "text", "description": "Identifier for the molecule"},
+            {"name": "molecule_role", "type": "text", "description": "Role in the proposed biology"}
+        ],
+        "examples": ["dNTPs", "NAD+", "small-molecule inhibitor"]
+    }
+
+    system_fallback = {
+        "name": "BiologicalSystem",
+        "description": "Any complex biological system, organelle, compartment, or process not fitting other specific types.",
+        "attributes": [
+            {"name": "system_id", "type": "text", "description": "Identifier for the system"},
+            {"name": "system_role", "type": "text", "description": "Role in the proposed biology"}
+        ],
+        "examples": ["immune response", "tumor microenvironment", "DNA damage response"]
+    }
+
+    return molecule_fallback, system_fallback
+
+
 # ============== Mode Detection ==============
 
 def is_biological_mode() -> bool:
@@ -426,6 +681,11 @@ def is_biological_mode() -> bool:
 def is_social_mode() -> bool:
     """Check if current simulation mode is social (default)"""
     return Config.SIMULATION_MODE.lower() in ('social', '')
+
+
+def is_grant_review_mode() -> bool:
+    """Check if current simulation mode is grant_review"""
+    return Config.SIMULATION_MODE.lower() == 'grant_review'
 
 
 def get_simulation_mode() -> str:

@@ -150,3 +150,21 @@ When `SIMULATION_MODE` is set to a non-default value:
 
 The OASIS simulation engine itself is not modified — only the LLM prompts that drive
 agent behavior are changed.
+
+---
+
+## Mode: grant_review
+
+For reviewing systems biology grant pre-proposals (2–3 page pre-applications).
+
+See `grant-review-soul.md` for the full soul configuration.
+
+Key differences from `biological` mode:
+- Ontology extracts scientific/technical entities FROM the proposal content
+  (CRISPR tools, target genes, model systems, pathways) — NOT human authors
+- Swarm agent personas are built from graph entities using SynBio personality mappings
+- Reviewer panel (3 agents) runs after simulation, before Reporter
+- Reporter synthesis follows grant review report structure
+- Time config: 24h, 30-min rounds, uniform activity
+
+Activate: `SIMULATION_MODE=grant_review`

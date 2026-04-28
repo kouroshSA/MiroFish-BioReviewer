@@ -2,13 +2,54 @@
   <div class="home-container">
     <!-- Top Navigation Bar -->
     <nav class="navbar">
-      <div class="nav-brand">MIROFISH-BIO</div>
+      <div class="nav-brand">MIROFISH-BIOREVIEWER</div>
       <div class="nav-links">
-        <a href="https://github.com/666ghj/MiroFish" target="_blank" class="github-link">
+        <a
+          href="https://colab.research.google.com/github/kouroshSA/MiroFish-BioReviewer/blob/main/colab/MiroFish_BioReviewer.ipynb"
+          target="_blank"
+          class="colab-link"
+          aria-label="Open MiroFish-BioReviewer in Google Colab"
+        >
+          <img
+            src="https://colab.research.google.com/assets/colab-badge.svg"
+            alt="Open In Colab"
+            class="colab-badge"
+          />
+        </a>
+        <a href="https://github.com/kouroshSA/MiroFish-BioReviewer" target="_blank" class="github-link">
           Visit our Github page <span class="arrow">↗</span>
         </a>
       </div>
     </nav>
+
+    <!-- Colab Tab — Run MiroFish-BioReviewer in Google Colab -->
+    <section class="colab-tab">
+      <div class="colab-tab-inner">
+        <div class="colab-tab-text">
+          <h3>Run MiroFish-BioReviewer in Google Colab</h3>
+          <p>
+            No local installation required. You will be prompted for your API keys at session start.
+            Keys are entered via <code>getpass</code> and never saved to disk.
+            Default simulation length: 40 rounds.
+            See
+            <a href="https://github.com/kouroshSA/MiroFish-BioReviewer/blob/main/colab/README_colab.md" target="_blank">
+              colab/README_colab.md
+            </a>
+            for full instructions.
+          </p>
+        </div>
+        <a
+          class="colab-cta"
+          href="https://colab.research.google.com/github/kouroshSA/MiroFish-BioReviewer/blob/main/colab/MiroFish_BioReviewer.ipynb"
+          target="_blank"
+        >
+          <img
+            src="https://colab.research.google.com/assets/colab-badge.svg"
+            alt="Open In Colab"
+          />
+        </a>
+      </div>
+    </section>
 
     <div class="main-content">
       <!-- Top Section: Hero Area -->
@@ -351,6 +392,68 @@ const startSimulation = () => {
 .nav-links {
   display: flex;
   align-items: center;
+  gap: 18px;
+}
+
+.colab-link {
+  display: inline-flex;
+  align-items: center;
+}
+
+.colab-badge {
+  height: 20px;
+  display: block;
+}
+
+/* Colab tab block — appears below the navbar, points users to the Colab notebook */
+.colab-tab {
+  background: #fff8eb;
+  border-bottom: 1px solid #f3d28a;
+  padding: 14px 32px;
+}
+
+.colab-tab-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.colab-tab-text h3 {
+  margin: 0 0 4px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f1f1f;
+}
+
+.colab-tab-text p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #4a4a4a;
+  line-height: 1.5;
+}
+
+.colab-tab-text code {
+  background: #f0e6cf;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+.colab-tab-text a {
+  color: #b85d00;
+}
+
+.colab-cta {
+  flex-shrink: 0;
+}
+
+.colab-cta img {
+  height: 28px;
+  display: block;
 }
 
 .github-link {

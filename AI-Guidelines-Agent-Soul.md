@@ -12,6 +12,20 @@ An AI model should follow the steps below to produce a domain-appropriate `agent
 
 ---
 
+## Step 0: Identify Input Type
+
+Before reading the manuscript, determine whether the input is:
+- **Scientific manuscript** → proceed to Step 1 as written
+- **Grant pre-proposal** (2–3 pages, structured aims, budget/team section) →
+  use `grant_review` mode. Key differences:
+  - Extract proposed tools, systems, and targets — not results or findings
+  - Entities represent *intended* biology, not *observed* biology
+  - The simulation asks: "Do the parts believe in the plan?"
+  - Persona generation uses the SynBio soul guidance in `grant-review-soul.md`
+  - Reviewer panel runs after simulation
+
+---
+
 ## Step 1: Critical Reading of the Manuscript
 
 Read the manuscript end-to-end and extract:

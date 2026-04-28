@@ -188,6 +188,47 @@ npm run frontend   # Frontend only
 
 ---
 
+## Grant Pre-Proposal Review Mode
+
+MiroFish-BioReviewer adds a specialized mode for reviewing systems biology grant
+pre-proposals.
+
+### Activating grant_review mode
+
+Set in `.env`:
+```
+SIMULATION_MODE=grant_review
+REVIEWER_PANEL_ENABLED=true
+```
+
+### What changes in grant_review mode
+
+| Component | Standard biological mode | grant_review mode |
+|-----------|-------------------------|-------------------|
+| ZEP entity extraction | Proteins, genes from manuscript results | Tools, constructs, systems from proposed research |
+| Swarm agent personas | Molecular entities from observed biology | CRISPR tools, vectors, targets from proposal |
+| Post-simulation step | Reporter runs immediately | Reviewer panel (3 agents) runs first |
+| Report structure | Scientific analysis | Structured grant review with scored dimensions |
+| Time config | 24–48h, condition-driven | 24h, uniform, 30-min rounds |
+
+### Reviewer panel
+
+Three reviewer agents assess the proposal after the swarm simulation completes:
+- **The Mechanist** — mechanistic logic, experimental design, statistical/quantitative rigor
+- **The Visionary** — significance, innovation, transformative potential
+- **The Realist** — feasibility, preliminary data, team expertise, scope
+
+Panel outputs are saved to `reviewer_panel.json` and used by the Reporter Agent
+to synthesize the final report.
+
+### Running in Google Colab
+
+Default Colab simulation length is **40 rounds**. See the
+[Colab README](colab/README_colab.md) or click:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/kouroshSA/MiroFish-BioReviewer/blob/main/colab/MiroFish_BioReviewer.ipynb)
+
+---
+
 ## Advanced Usage
 
 ### Environment Variable Tuning
@@ -205,7 +246,12 @@ Add these to your `.env` file to customize behavior:
 | `REPORT_AGENT_MAX_REFLECTION_ROUNDS` | `2` | Report agent self-reflection rounds |
 | `REPORT_AGENT_TEMPERATURE` | `0.5` | LLM temperature for report generation |
 | `DISCUSSION_LLM_MODEL_NAME` | `claude-sonnet-4-20250514` | Stronger model for Discussion & Big Picture sections |
-| `SIMULATION_MODE` | `social` | Simulation mode: `social`, `biological`, or `custom` |
+| `SIMULATION_MODE` | `social` | Simulation mode: `social`, `biological`, `custom`, or `grant_review` |
+| `REVIEWER_PANEL_ENABLED` | `true` | Run the 3-agent reviewer panel (grant_review mode only) |
+| `REVIEWER_MECHANIST_TEMPERATURE` | `0.3` | Mechanist reviewer LLM temperature |
+| `REVIEWER_VISIONARY_TEMPERATURE` | `0.7` | Visionary reviewer LLM temperature |
+| `REVIEWER_REALIST_TEMPERATURE` | `0.4` | Realist reviewer LLM temperature |
+| `REVIEWER_MAX_TOKENS` | `800` | Max tokens per reviewer response |
 
 ### Switching Ollama Models
 

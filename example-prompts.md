@@ -4,6 +4,53 @@ These are tested prompts for the biological simulation mode (`SIMULATION_MODE=bi
 
 ---
 
+## Grant Pre-Proposal Review Prompts (grant_review mode)
+
+These prompts are for use with `SIMULATION_MODE=grant_review` in MiroFish-BioReviewer.
+Upload your pre-proposal PDF and use one of the following in the simulation request field.
+
+### Default grant review prompt (paste as-is for most pre-proposals)
+
+```
+// Review this systems biology grant pre-proposal.
+// Simulate how the key biological tools, systems, and molecular targets described
+// in the proposal would react to and debate the scientific plan.
+// Focus on entities central to the proposed biology:
+//   - CRISPR or other editing tools being proposed
+//   - Target genes, loci, or pathways
+//   - Host systems, model organisms, cell lines
+//   - Delivery vectors or synthetic circuits
+// Do NOT create agents for researchers, institutions, funding agencies, or journals.
+//
+// Prediction tasks for the swarm:
+// 1. Do the proposed tools and systems 'believe' the scientific plan is feasible?
+//    Let them debate the mechanistic logic.
+// 2. Is there tension between what is designed (the proposed approach) and what
+//    biological reality will tolerate? Surface that tension.
+// 3. What is the single most compelling scientific claim in this proposal? Have
+//    the entities argue for or against it.
+```
+
+### CRISPR base editing proposal (more specific framing)
+
+```
+// This proposal describes a base editing approach to correct a disease-causing
+// point mutation. Simulate the world of this proposal:
+// The editing tool (base editor), the guide RNA, the target locus, the host cell
+// system, and the DNA repair machinery are all characters.
+// Key questions to simulate:
+// 1. Will the base editor reach its target with the proposed delivery strategy?
+//    Let the delivery vector, the host cell, and the editor debate this.
+// 2. Is HDR or NHEJ the dominant pathway in the proposed cell type? How does
+//    this affect the proposed editing outcome?
+// 3. What off-target sites are most likely to cause problems, and how concerned
+//    should the field be?
+// 4. Does the proposed experimental plan give the right readouts to answer the
+//    central scientific question?
+```
+
+---
+
 ## 1. NiTRO — Coronavirus Metabolic Warfare (Detailed Prompt)
 
 **Paper:** NiTRO computational tool for coronavirus-host metabolic hijacking analysis
