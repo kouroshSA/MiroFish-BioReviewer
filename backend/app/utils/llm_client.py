@@ -97,7 +97,25 @@ class LLMClient:
         }
 
         if response_format:
-            kwargs["response_format"] = response_format
+            if (
+                isinstance(response_format, dict)
+                and response_format.get("type") == "json_object"
+                and _looks_like_anthropic(self.base_url)
+            ):
+                # Anthropic's OpenAI-compat layer rejects
+                # response_format={"type": "json_object"} with HTTP 400
+                # ("response_format.type: Input should be 'json_schema'").
+                # Strip the field — every prompt that asks for JSON also
+                # asks for it in plain text in the system message, and
+                # chat_json's fallback parser handles whatever markdown
+                # wrapping Claude adds.
+                logger.info(
+                    "Dropping response_format=%s for Anthropic compat endpoint "
+                    "(returns 400; falling back to prompt-only JSON instruction)",
+                    response_format,
+                )
+            else:
+                kwargs["response_format"] = response_format
 
         # INFO-level call lifecycle so the Colab log stream shows exactly
         # which calls are in flight and how long they take. Without this,

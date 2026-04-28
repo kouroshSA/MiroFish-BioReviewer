@@ -567,18 +567,26 @@ class OasisProfileGenerator:
         
         for attempt in range(max_attempts):
             try:
-                from ..utils.llm_client import _llm_semaphore
+                from ..utils.llm_client import _llm_semaphore, _looks_like_anthropic
+                # Anthropic's OpenAI-compat endpoint rejects
+                # response_format={"type": "json_object"} with HTTP 400.
+                # Omit the field for Anthropic and rely on the system
+                # prompt's JSON instruction; OpenAI/Gemini/DeepSeek still
+                # get json_object mode.
+                completion_kwargs = {
+                    "model": self.model_name,
+                    "messages": [
+                        {"role": "system", "content": self._get_system_prompt(is_individual)},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.7 - (attempt * 0.1),
+                    # Do not set max_tokens; let the LLM generate freely
+                }
+                _client_base_url = str(getattr(self.client, "base_url", "") or "")
+                if not _looks_like_anthropic(_client_base_url):
+                    completion_kwargs["response_format"] = {"type": "json_object"}
                 with _llm_semaphore:
-                    response = self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=[
-                            {"role": "system", "content": self._get_system_prompt(is_individual)},
-                            {"role": "user", "content": prompt}
-                        ],
-                        response_format={"type": "json_object"},
-                        temperature=0.7 - (attempt * 0.1)  # Lower temperature on each retry
-                        # Do not set max_tokens, let the LLM generate freely
-                    )
+                    response = self.client.chat.completions.create(**completion_kwargs)
 
                 content = response.choices[0].message.content
 
