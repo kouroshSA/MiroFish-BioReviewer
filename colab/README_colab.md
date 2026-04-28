@@ -50,10 +50,17 @@ the top of the README, or click here directly:
 [Open in Colab](https://colab.research.google.com/github/kouroshSA/MiroFish-BioReviewer/blob/main/colab/MiroFish_BioReviewer.ipynb).
 The URL bar must say `colab.research.google.com`.
 
-### Cell 2 hangs or times out installing dependencies
-The first install can take 2–4 minutes. If it stalls beyond that:
-1. **Runtime → Restart runtime**
-2. Re-run Cell 2
+### Cell 2 takes ~5 minutes the first time
+That's expected. Cell 2 has to:
+1. Clone the repo (~5 sec)
+2. `apt-get install python3.11` if Colab's runtime is Python 3.12+ (~30 sec)
+3. Create a venv at `/opt/mirofish_venv` (~5 sec)
+4. `pip install -r backend/requirements.txt` into the venv (~3 minutes)
+
+If it stalls past 6–7 minutes: **Runtime → Restart runtime**, then re-run Cell 2.
+
+### Why does Cell 2 print "Installing Python 3.11..."?
+Every released version of `camel-oasis` declares `requires_python = "<3.12,>=3.10"`. When Colab's default runtime is Python 3.12+ (current default since 2025), pip can't install camel-oasis directly — so Cell 2 transparently provisions a Python 3.11 venv at `/opt/mirofish_venv` and installs the dependencies there. Cell 6 then runs the pipeline through that venv via the `MIROFISH_PYTHON` env var. No action needed on your end.
 
 ### `Cell 6` raises `ModuleNotFoundError`
 Cell 2 finished but a package didn't actually install. **Runtime → Restart
