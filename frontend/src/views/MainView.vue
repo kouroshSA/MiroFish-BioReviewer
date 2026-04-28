@@ -219,8 +219,25 @@ const handleNewProject = async () => {
       addLog(`Error generating ontology: ${error.value}`)
     }
   } catch (err) {
-    error.value = err.message
-    addLog(`Exception in handleNewProject: ${err.message}`)
+    // Axios populates err.response on HTTP errors; the Flask backend puts
+    // the actual exception message in response.data.error and a Python
+    // traceback in response.data.traceback. Without surfacing this, the
+    // student only sees "Request failed with status code 500" and has
+    // to dig into the Colab cell for the backend log.
+    const serverErr =
+      err?.response?.data?.error ||
+      err?.response?.statusText ||
+      err?.message ||
+      'Unknown error'
+    error.value = serverErr
+    addLog(`Exception in handleNewProject: ${serverErr}`)
+    if (err?.response?.data?.traceback) {
+      const trace = String(err.response.data.traceback)
+      // Surface the last (most informative) traceback line
+      const lastLine = trace.trim().split('\n').slice(-2).join(' | ')
+      addLog(`Backend traceback: ${lastLine}`)
+      console.error('Full backend traceback:', trace)
+    }
   } finally {
     loading.value = false
   }
