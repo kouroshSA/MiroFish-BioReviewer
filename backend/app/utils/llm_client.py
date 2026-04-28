@@ -5,6 +5,7 @@ Unified OpenAI-format API calls
 
 import json
 import re
+import time
 import threading
 import logging
 from typing import Optional, Dict, Any, List
@@ -19,6 +20,27 @@ logger = logging.getLogger('mirofish.llm_client')
 _llm_semaphore = threading.Semaphore(Config.MAX_CONCURRENT_LLM_REQUESTS)
 
 
+# Hard ceiling for any single LLM call. Without this, the OpenAI SDK's
+# default is 600s and a stalled provider can keep a Flask request handler
+# tied up well past the user's patience. 120s is enough for the largest
+# ontology / persona / report calls we make, while still surfacing dead
+# providers quickly.
+LLM_REQUEST_TIMEOUT_SECONDS = float(
+    Config.LLM_API_KEY and getattr(Config, "LLM_TIMEOUT", 0) or 120.0
+)
+
+
+def _looks_like_anthropic(base_url: str) -> bool:
+    """True for the OpenAI-compat layer at api.anthropic.com.
+
+    Anthropic ignores `response_format`, so when we want JSON we have to
+    rely on the system prompt. Detecting this lets `chat_json` add an
+    explicit JSON-only suffix when calling Anthropic, while leaving
+    OpenAI/Gemini/DeepSeek alone (they honor `response_format` natively).
+    """
+    return bool(base_url) and "anthropic.com" in base_url.lower()
+
+
 class LLMClient:
     """LLM Client"""
 
@@ -26,18 +48,21 @@ class LLMClient:
         self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        timeout: Optional[float] = None,
     ):
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
         self.model = model or Config.LLM_MODEL_NAME
+        self.timeout = timeout if timeout is not None else LLM_REQUEST_TIMEOUT_SECONDS
 
         if not self.api_key:
             raise ValueError("LLM_API_KEY not configured")
 
         self.client = OpenAI(
             api_key=self.api_key,
-            base_url=self.base_url
+            base_url=self.base_url,
+            timeout=self.timeout,
         )
 
         # Token usage tracking
@@ -74,24 +99,52 @@ class LLMClient:
         if response_format:
             kwargs["response_format"] = response_format
 
+        # INFO-level call lifecycle so the Colab log stream shows exactly
+        # which calls are in flight and how long they take. Without this,
+        # a hung LLM looked indistinguishable from a hung backend.
+        approx_input_chars = sum(len(m.get("content", "")) for m in messages)
+        logger.info(
+            "LLM call ▶ model=%s base_url=%s ~%d input chars, max_tokens=%d, json_mode=%s",
+            self.model, self.base_url, approx_input_chars, max_tokens,
+            bool(response_format),
+        )
+
         # Queue gate: limit concurrent LLM requests to avoid overwhelming
         # the inference server (Ollama/vLLM) and crashing the system.
-        logger.debug("Waiting for LLM semaphore (%d/%d slots in use)",
-                     Config.MAX_CONCURRENT_LLM_REQUESTS - _llm_semaphore._value,
-                     Config.MAX_CONCURRENT_LLM_REQUESTS)
-        with _llm_semaphore:
-            response = self.client.chat.completions.create(**kwargs)
+        t0 = time.time()
+        try:
+            with _llm_semaphore:
+                response = self.client.chat.completions.create(**kwargs)
+        except Exception as e:
+            logger.error(
+                "LLM call ✗ FAILED after %.1fs: %s: %s",
+                time.time() - t0, type(e).__name__, e,
+            )
+            raise
+        dt = time.time() - t0
 
         # Track token usage
+        pt = ct = 0
         if response.usage:
             pt = response.usage.prompt_tokens or 0
             ct = response.usage.completion_tokens or 0
             self.total_prompt_tokens += pt
             self.total_completion_tokens += ct
             self.total_tokens += pt + ct
-            logger.debug("Tokens: prompt=%d, completion=%d (cumulative: %d)", pt, ct, self.total_tokens)
+        logger.info(
+            "LLM call ✓ in %.1fs (prompt=%d, completion=%d)",
+            dt, pt, ct,
+        )
 
         content = response.choices[0].message.content
+        if content is None:
+            # Anthropic and some other providers return None content if the
+            # request hit a content filter or finish_reason='content_filter'.
+            # Treat as empty string so downstream code doesn't crash with
+            # `TypeError: expected string or bytes-like object`.
+            finish = getattr(response.choices[0], "finish_reason", "?")
+            logger.warning("LLM returned None content (finish_reason=%s)", finish)
+            return ""
         # Some models (e.g., MiniMax M2.5) include <think> reasoning content that needs to be removed
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
         return content

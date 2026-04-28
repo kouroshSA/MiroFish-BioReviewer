@@ -5,6 +5,7 @@ suitable for social simulation or biological simulation.
 """
 
 import json
+import logging
 from typing import Dict, Any, List, Optional
 from ..utils.llm_client import LLMClient
 from ..utils.agent_soul import (
@@ -13,6 +14,8 @@ from ..utils.agent_soul import (
     build_biological_user_message_suffix,
     build_biological_fallback_types,
 )
+
+logger = logging.getLogger('mirofish.ontology_generator')
 
 
 # System prompt for ontology generation
@@ -206,17 +209,32 @@ class OntologyGenerator:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message}
         ]
-        
-        # Call LLM
-        result = self.llm_client.chat_json(
-            messages=messages,
-            temperature=0.3,
-            max_tokens=4096
+
+        logger.info(
+            "Ontology generator: sending request to LLM (system=%d chars, user=%d chars)",
+            len(system_prompt), len(user_message),
         )
-        
+
+        # Call LLM
+        try:
+            result = self.llm_client.chat_json(
+                messages=messages,
+                temperature=0.3,
+                max_tokens=4096
+            )
+        except Exception as e:
+            logger.exception("Ontology generator: chat_json failed: %s", e)
+            raise
+
+        logger.info(
+            "Ontology generator: got response with %d entity_types and %d edge_types",
+            len(result.get("entity_types", []) if isinstance(result, dict) else []),
+            len(result.get("edge_types", []) if isinstance(result, dict) else []),
+        )
+
         # Validate and post-process
         result = self._validate_and_process(result)
-        
+
         return result
     
     # Maximum text length sent to LLM (50,000 characters)
