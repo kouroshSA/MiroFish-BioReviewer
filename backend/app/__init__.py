@@ -75,7 +75,7 @@ def create_app(config_class=Config):
 
     # Serve the built Vue frontend from frontend/dist when present (Colab path).
     # Skipped during local dev where Vite handles the frontend on port 3000.
-    from flask import send_from_directory
+    from flask import send_from_directory, abort
     frontend_dist = os.path.abspath(os.path.join(
         os.path.dirname(__file__), '..', '..', 'frontend', 'dist'
     ))
@@ -89,8 +89,13 @@ def create_app(config_class=Config):
 
         @app.route('/<path:path>')
         def _serve_frontend(path):
-            # /api/* and /health are owned by blueprints; specific routes win,
-            # so we only get here for static assets and SPA URL paths.
+            # Defensive: NEVER intercept /api/* or /health. Werkzeug normally
+            # picks the more-specific blueprint rule, but we make the intent
+            # explicit so a future routing change can't silently swallow an
+            # API request and serve index.html (which would look like a hang
+            # to the SPA — exactly the symptom that brought us here).
+            if path.startswith('api/') or path == 'health':
+                abort(404)
             full = os.path.join(frontend_dist, path)
             if os.path.isfile(full):
                 return send_from_directory(frontend_dist, path)

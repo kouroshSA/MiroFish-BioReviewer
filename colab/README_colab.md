@@ -18,8 +18,13 @@ Run MiroFish-BioReviewer directly in Google Colab without any local installation
 
    ### 🌐 Live UI mode — recommended for students (Cell 4)
    Cell 4 builds the Vue/Vite frontend, starts Flask in the background, and
-   uses Colab's `kernel.proxyPort` to give you a clickable URL. Open the URL
-   to use the full MiroFish-BioReviewer web UI in your browser:
+   uses Colab's `kernel.proxyPort` to give you a clickable URL. **Cell 4
+   then keeps running and streams Flask logs live** — leave it running while
+   you use the UI in another tab. Each request your browser makes shows up
+   as a log line in the cell, so if the UI ever looks stuck, you can scroll
+   the cell to see what the backend is doing.
+
+   Open the URL in the cell to use the full MiroFish-BioReviewer web UI in your browser:
    - Upload the proposal in the UI
    - Watch the **knowledge graph form node-by-node** as ZEP processes the text
    - Watch the **swarm of biological agents** run round-by-round
@@ -91,3 +96,21 @@ Most common cause is an exhausted ZEP free-tier quota or an LLM API rate
 limit. Check the printed traceback. The pipeline writes partial state under
 `backend/uploads/` so you can resume by lowering the round count in Cell 5
 and re-running Cell 6.
+
+### Live UI loads but the graph never generates
+Cell 4 streams the Flask request log live. Scroll the cell while you're
+using the UI to see what's happening on the backend:
+- An empty log when you click *Launch Engine* means the upload never
+  reached Flask (rare — usually a Colab proxy hiccup, retry it).
+- Lots of log lines but no `=== Ontology generation complete ===` for
+  several minutes means the LLM call is slow — wait it out. `gpt-4o-mini`
+  typically finishes in 30–90s; cheaper local models can take longer.
+- A traceback in the log means something failed — read the last few lines.
+  ZEP errors usually mean a wrong `ZEP_API_KEY` or quota exhaustion;
+  OpenAI errors usually mean a wrong key or a model name the endpoint
+  doesn't recognize.
+
+If you need to fully restart the backend without restarting the runtime:
+1. Click the ⏹ stop button on Cell 4 (this only stops the log stream).
+2. Run `backend_proc.terminate()` in a fresh code cell.
+3. Re-run Cell 4.
