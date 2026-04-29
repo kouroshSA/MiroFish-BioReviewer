@@ -174,6 +174,34 @@ Do **not** copy the output verbatim into a real submission. The polished section
 
 ---
 
+## FAQ
+
+**How long does one full run take?**
+About **8–15 minutes** of pipeline time after Cell 4 starts the backend, plus **~5 minutes** the very first time you run Cell 2 in a fresh Colab session (it has to install Python 3.11 and ~2 GB of packages). Re-running cells in the same session is seconds.
+
+**How much does one full run cost?**
+With Anthropic Claude Haiku (`claude-haiku-4-5`, the default), roughly **$0.05–$0.20 per proposal** depending on length and round count. Sonnet is ~5× more, Opus is ~25× more. Zep Cloud's free tier covers several full runs per month.
+
+**Why does Cell 2 install Python 3.11 if Colab already has Python 3.12?**
+One of our dependencies (`camel-oasis`, the social-simulation engine) does not yet support Python 3.12. The cell quietly creates a 3.11 sandbox at `/opt/mirofish_venv` and installs everything there. Cells 4 and onward use that interpreter. This is automatic; you do not need to do anything.
+
+**My Colab session timed out / disconnected mid-run. What happens?**
+The Flask backend dies and the UI tab stops working. Partial state may be saved on disk, but the easiest recovery is to disconnect+delete the runtime and start over. Free Colab idles aggressively (~90 min of no interaction) — for long runs, click into the Colab tab every 10–15 minutes to keep the session alive, or use Colab Pro.
+
+**Can I run several proposals in the same session?**
+Yes. After the first proposal finishes, refresh the UI tab and upload the next PDF. The pipeline reuses the running Flask backend, so each subsequent run only takes the pipeline time (no Cell-2 reinstall). Just keep the Colab tab open between runs.
+
+**Where does my proposal text actually go?**
+- The full text is uploaded to the Colab VM (Google's infrastructure) and processed there.
+- The text is sent to **your** chosen LLM provider (Anthropic / OpenAI / etc.) for analysis. Assume that provider sees it. Read their data-retention policy if this matters for your proposal.
+- The text is also sent to **Zep Cloud** for graph construction. Same caveat.
+- Nothing is sent anywhere else. Keys and proposal text are deleted when the Colab session ends.
+
+**Can I save my Colab session URL and come back to it later?**
+You can keep the *notebook* tab — Colab will reload the saved cells. But the *runtime* (the VM running Flask) terminates after ~90 minutes of inactivity, so you'll usually need to re-run Cells 2–4 when you return.
+
+---
+
 ## Where to learn more
 
 - The repository: <https://github.com/kouroshSA/MiroFish-BioReviewer>
