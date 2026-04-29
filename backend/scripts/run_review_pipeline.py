@@ -276,6 +276,12 @@ def _copy_output(report_folder: str, output_dir: str) -> None:
         with open(panel, "r", encoding="utf-8") as fr, open(dst, "w", encoding="utf-8") as fw:
             fw.write(fr.read())
         print(f"      → copied reviewer_panel.json → {dst}")
+    pmfr = os.path.join(report_folder, "program_manager_final_report.md")
+    if os.path.exists(pmfr):
+        dst = os.path.join(output_dir, "program_manager_final_report.md")
+        with open(pmfr, "r", encoding="utf-8") as fr, open(dst, "w", encoding="utf-8") as fw:
+            fw.write(fr.read())
+        print(f"      → copied program_manager_final_report.md → {dst}")
 
 
 def main() -> int:

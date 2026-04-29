@@ -2120,6 +2120,231 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
         content = f"## Big Picture\n\n{response.strip()}"
         return content
 
+    # ─────────────────────────── Program Manager Final Report ──────────────────────────
+
+    PMFR_FILENAME = "program_manager_final_report.md"
+    PMFR_INTRO = (
+        "*This section is a senior-model synthesis that integrates the swarm "
+        "simulation evidence, the reviewer panel verdicts, and the "
+        "computational modeling results into a publication-ready document. "
+        "It has been reviewed at a higher level than the section-by-section "
+        "output above, and is also available as a standalone download.*"
+    )
+
+    def _generate_polished_summary(
+        self,
+        full_report_text: str,
+    ) -> str:
+        """Final polish pass over the whole report.
+
+        Takes everything written so far (numbered sections + discussion +
+        broader implications) and produces a tight, decisive Markdown
+        document suitable for distribution. Preserves all scores, reviewer
+        recommendations, and quoted evidence; tightens prose, removes
+        repetition across sections, and enforces a consistent voice."""
+        logger.info(
+            "Generating polished executive summary using model: %s",
+            Config.DISCUSSION_LLM_MODEL_NAME,
+        )
+
+        # Cap input — even an 8k-context model handles ~30k chars cleanly.
+        max_chars = 200000
+        if len(full_report_text) > max_chars:
+            full_report_text = full_report_text[:max_chars] + "\n\n[... truncated ...]"
+
+        is_grant_review = Config.SIMULATION_MODE.lower() == "grant_review"
+
+        if is_grant_review:
+            system_prompt = (
+                "You are a senior program manager finalizing a grant pre-proposal "
+                "review for distribution to a study section. Polish the draft "
+                "into a publication-ready review document.\n\n"
+                "PRESERVE EXACTLY (no rewording, no rounding, no omission):\n"
+                "- Every scored dimension and its score\n"
+                "- Every reviewer recommendation (Fund / Revise and Resubmit / Do Not Fund)\n"
+                "- Every specific concern, strength, or red flag attributed to a "
+                "  reviewer (Mechanist / Visionary / Realist)\n"
+                "- Every quoted piece of evidence from the swarm simulation\n\n"
+                "POLISH FOR:\n"
+                "- A single consistent tone (formal, neutral, decisive)\n"
+                "- Clear narrative flow between sections\n"
+                "- Removal of repetition across sections\n"
+                "- Crisp transitions and topic sentences\n\n"
+                "DO NOT add new findings, scores, or claims that are not in the "
+                "draft. Output Markdown only — no commentary before or after."
+            )
+        else:
+            system_prompt = (
+                "You are a senior editor finalizing a scientific computational "
+                "modeling report. Polish the draft into a publication-ready "
+                "Markdown document. Preserve every finding, quoted piece of "
+                "evidence, and section heading, but tighten prose, remove "
+                "redundancy across sections, and enforce a consistent academic "
+                "voice. Do not add new claims. Output Markdown only — no "
+                "commentary before or after."
+            )
+
+        user_prompt = (
+            "Polish the following draft into a publication-ready document.\n\n"
+            "DRAFT:\n\n"
+            f"{full_report_text}\n\n"
+            "OUTPUT: a single polished Markdown document."
+        )
+
+        polish_llm = LLMClient(model=Config.DISCUSSION_LLM_MODEL_NAME)
+        try:
+            response = polish_llm.chat(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+                max_tokens=8192,
+            )
+        except Exception as e:
+            logger.error("Polished summary generation failed: %s", e)
+            return ""
+
+        if not response or not response.strip():
+            logger.warning("Polished summary LLM returned empty response")
+            return ""
+
+        usage = polish_llm.get_usage_summary()
+        logger.info(
+            "Polished summary token usage (model=%s): prompt=%d, completion=%d, total=%d",
+            Config.DISCUSSION_LLM_MODEL_NAME,
+            usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"],
+        )
+        if self.report_logger:
+            self.report_logger.log(
+                action="polished_summary_token_usage",
+                stage="generating",
+                details={"model": Config.DISCUSSION_LLM_MODEL_NAME, **usage},
+            )
+
+        return response.strip()
+
+    def _generate_program_manager_final_report(
+        self,
+        report_id: str,
+        generated_sections: List[str],
+        section_index: int,
+        progress_callback: Optional[Callable] = None,
+    ) -> str:
+        """Run Discussion + Big Picture + final polish, compose them into a
+        single Markdown section under '## Program Manager Final Report' with
+        three subheadings, and persist a standalone copy to
+        program_manager_final_report.md so the UI can offer a dedicated
+        download button.
+
+        Returns the composed section content (starting with the ## heading)
+        or an empty string if all three sub-steps failed.
+        """
+        # Step 1 — Synthesis & Discussion (reuses existing helper)
+        if progress_callback:
+            progress_callback(
+                "generating", 89,
+                "Program Manager Final Report: synthesis & discussion...",
+            )
+        discussion_raw = self._generate_discussion_section(
+            report_id=report_id,
+            generated_sections=generated_sections,
+            section_index=section_index,
+            progress_callback=None,  # progress reported here, not in sub-step
+        ) or ""
+        # Strip the leading "## Discussion" heading we'll re-add as a "###"
+        # subheading. Also strip any "### Broader Implications" the discussion
+        # prompt may have appended (we'll show that under its own subheading).
+        discussion_body = re.sub(
+            r"^##\s+Discussion\s*\n+", "", discussion_raw, count=1
+        ).strip()
+        discussion_body = re.split(
+            r"^###\s+Broader Implications\s*$", discussion_body,
+            maxsplit=1, flags=re.MULTILINE,
+        )[0].strip()
+
+        # Step 2 — Broader Implications (reuses existing helper)
+        if progress_callback:
+            progress_callback(
+                "generating", 92,
+                "Program Manager Final Report: broader implications...",
+            )
+        big_picture_raw = self._generate_big_picture_section(
+            generated_sections=generated_sections,
+            discussion_content=discussion_raw,
+            section_index=section_index,
+            progress_callback=None,
+        ) or ""
+        big_picture_body = re.sub(
+            r"^##\s+Big Picture\s*\n+", "", big_picture_raw, count=1
+        ).strip()
+
+        # Step 3 — NEW: polished executive summary over the whole report
+        if progress_callback:
+            progress_callback(
+                "generating", 94,
+                "Program Manager Final Report: polishing...",
+            )
+        report_for_polish = "\n\n---\n\n".join(generated_sections)
+        if discussion_body or big_picture_body:
+            report_for_polish += (
+                "\n\n---\n\n## Discussion\n\n"
+                f"{discussion_body}\n\n"
+                "## Broader Implications\n\n"
+                f"{big_picture_body}\n"
+            )
+        polished_body = self._generate_polished_summary(report_for_polish)
+
+        # If everything failed, surface that to the caller so it can log + skip.
+        if not (discussion_body or big_picture_body or polished_body):
+            logger.warning(
+                "Program Manager Final Report: all three sub-steps returned empty"
+            )
+            return ""
+
+        # Compose the section.
+        parts = [f"## Program Manager Final Report\n", f"\n{self.PMFR_INTRO}\n"]
+        if discussion_body:
+            parts.append("\n### Synthesis & Discussion\n\n")
+            parts.append(discussion_body + "\n")
+        else:
+            parts.append("\n### Synthesis & Discussion\n\n")
+            parts.append("_(Discussion sub-step did not produce output; see logs.)_\n")
+        if big_picture_body:
+            parts.append("\n### Broader Implications\n\n")
+            parts.append(big_picture_body + "\n")
+        else:
+            parts.append("\n### Broader Implications\n\n")
+            parts.append("_(Broader implications sub-step did not produce output; see logs.)_\n")
+        if polished_body:
+            parts.append("\n### Polished Executive Summary\n\n")
+            parts.append(polished_body + "\n")
+        else:
+            parts.append("\n### Polished Executive Summary\n\n")
+            parts.append("_(Polish sub-step did not produce output; see logs.)_\n")
+
+        composed = "".join(parts)
+
+        # Persist standalone file for the UI download button.
+        try:
+            standalone_path = os.path.join(
+                ReportManager._get_report_folder(report_id), self.PMFR_FILENAME
+            )
+            with open(standalone_path, "w", encoding="utf-8") as f:
+                f.write(composed)
+            logger.info(
+                "Program Manager Final Report standalone file saved: %s",
+                standalone_path,
+            )
+        except Exception as e:
+            # Standalone copy is convenience only; the section is already in
+            # outline.sections and will be assembled into full_report.md.
+            logger.warning(
+                "Failed to write %s standalone copy: %s", self.PMFR_FILENAME, e
+            )
+
+        return composed
+
     def generate_report(
         self,
         progress_callback: Optional[Callable[[str, int, str], None]] = None,
@@ -2311,76 +2536,67 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
                     completed_sections=completed_section_titles
                 )
 
-            # Discussion section — uses stronger model
-            discussion_section_index = total_sections + 1
+            # ── Program Manager Final Report ──
+            # Replaces the previous separate Discussion + Big Picture sections
+            # with a single senior-model section that has three subheadings:
+            #   - Synthesis & Discussion (academic synthesis vs. original paper)
+            #   - Broader Implications (former Big Picture wrap-up paragraph)
+            #   - Polished Executive Summary (NEW: final polish pass over the
+            #     whole report)
+            # Also written to a standalone file (program_manager_final_report.md)
+            # so the UI can offer a dedicated download button.
+            pmfr_index = total_sections + 1
             ReportManager.update_progress(
                 report_id, "generating", 89,
-                "Generating Discussion section...",
-                current_section="Discussion",
+                "Generating Program Manager Final Report...",
+                current_section="Program Manager Final Report",
                 completed_sections=completed_section_titles
             )
 
-            discussion_content = self._generate_discussion_section(
+            pmfr_content = self._generate_program_manager_final_report(
                 report_id=report_id,
                 generated_sections=generated_sections,
-                section_index=discussion_section_index,
+                section_index=pmfr_index,
                 progress_callback=progress_callback,
             )
 
-            if discussion_content:
-                discussion_section = ReportSection(title="Discussion", content="")
-                # Store raw content (save_section will handle cleanup)
-                discussion_section.content = discussion_content.replace("## Discussion\n\n", "", 1)
-                ReportManager.save_section(report_id, discussion_section_index, discussion_section)
-                completed_section_titles.append("Discussion")
-                generated_sections.append(discussion_content)
-                outline.sections.append(discussion_section)
+            if pmfr_content:
+                pmfr_section = ReportSection(
+                    title="Program Manager Final Report", content=""
+                )
+                # Store raw body (save_section re-adds the ## heading)
+                pmfr_section.content = pmfr_content.replace(
+                    "## Program Manager Final Report\n\n", "", 1
+                )
+                ReportManager.save_section(report_id, pmfr_index, pmfr_section)
+                completed_section_titles.append("Program Manager Final Report")
+                generated_sections.append(pmfr_content)
+                outline.sections.append(pmfr_section)
+
+                # Persist outline.json so the saved outline reflects the
+                # appended PMFR section (the original outline.json was written
+                # after Phase 1 planning and didn't know about this section).
+                # The post-processor relies on outline.sections to keep ##
+                # headings intact, but the on-disk file is what consumers
+                # like the UI's "Outline" tab read.
+                ReportManager.save_outline(report_id, outline)
 
                 if self.report_logger:
                     self.report_logger.log_section_full_complete(
-                        section_title="Discussion",
-                        section_index=discussion_section_index,
-                        full_content=discussion_content.strip()
+                        section_title="Program Manager Final Report",
+                        section_index=pmfr_index,
+                        full_content=pmfr_content.strip()
                     )
 
-                logger.info("Discussion section saved: %s/section_%02d.md", report_id, discussion_section_index)
-
-            ReportManager.update_progress(
-                report_id, "generating", 93,
-                "Discussion section complete" if discussion_content else "Discussion skipped",
-                current_section=None,
-                completed_sections=completed_section_titles
-            )
-
-            # Big Picture wrap-up section
-            big_picture_index = discussion_section_index + 1
-            big_picture_content = self._generate_big_picture_section(
-                generated_sections=generated_sections,
-                discussion_content=discussion_content or "",
-                section_index=big_picture_index,
-                progress_callback=progress_callback,
-            )
-
-            if big_picture_content:
-                bp_section = ReportSection(title="Big Picture", content="")
-                bp_section.content = big_picture_content.replace("## Big Picture\n\n", "", 1)
-                ReportManager.save_section(report_id, big_picture_index, bp_section)
-                completed_section_titles.append("Big Picture")
-                generated_sections.append(big_picture_content)
-                outline.sections.append(bp_section)
-
-                if self.report_logger:
-                    self.report_logger.log_section_full_complete(
-                        section_title="Big Picture",
-                        section_index=big_picture_index,
-                        full_content=big_picture_content.strip()
-                    )
-
-                logger.info("Big Picture section saved: %s/section_%02d.md", report_id, big_picture_index)
+                logger.info(
+                    "Program Manager Final Report saved: %s/section_%02d.md",
+                    report_id, pmfr_index,
+                )
 
             ReportManager.update_progress(
                 report_id, "generating", 96,
-                "Big Picture complete" if big_picture_content else "Big Picture skipped",
+                "Program Manager Final Report complete" if pmfr_content
+                else "Program Manager Final Report skipped",
                 current_section=None,
                 completed_sections=completed_section_titles
             )

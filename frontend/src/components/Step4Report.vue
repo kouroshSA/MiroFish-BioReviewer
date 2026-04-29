@@ -137,6 +137,20 @@
               </svg>
             </button>
 
+            <!-- Program Manager Final Report — dedicated download for the
+                 senior-model synthesis (Synthesis & Discussion + Broader
+                 Implications + Polished Executive Summary). -->
+            <button class="pm-report-btn" @click="downloadProgramManagerReport"
+                    title="Download the senior-model synthesis as a standalone Markdown file">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line>
+                <line x1="9" y1="15" x2="15" y2="15"></line>
+              </svg>
+              <span>Program Manager Final Report</span>
+            </button>
+
             <!-- Export dropdown -->
             <div class="export-dropdown-wrapper">
               <button class="export-btn" @click="showExportMenu = !showExportMenu">
@@ -429,6 +443,15 @@ const goToInteraction = () => {
   if (props.reportId) {
     router.push({ name: 'Interaction', params: { reportId: props.reportId } })
   }
+}
+
+// Download just the Program Manager Final Report (standalone Markdown)
+const downloadProgramManagerReport = () => {
+  if (!props.reportId) return
+  window.open(
+    `/api/report/${props.reportId}/program-manager-report/download`,
+    '_blank'
+  )
 }
 
 // Report Export
@@ -3465,6 +3488,28 @@ watch(() => props.reportId, (newId) => {
 
 .next-step-btn:hover svg {
   transform: translateX(4px);
+}
+
+/* Program Manager Final Report download button */
+.pm-report-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #FFFFFF;
+  background: #FB923C;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  white-space: nowrap;
+}
+
+.pm-report-btn:hover {
+  background: #EA7C2A;
 }
 
 /* Export Dropdown */

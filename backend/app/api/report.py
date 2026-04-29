@@ -451,6 +451,54 @@ def download_report(report_id: str):
         }), 500
 
 
+@report_bp.route('/<report_id>/program-manager-report/download', methods=['GET'])
+def download_program_manager_report(report_id: str):
+    """
+    Download the Program Manager Final Report — the senior-model section
+    that merges Synthesis & Discussion, Broader Implications, and the
+    Polished Executive Summary into a single Markdown file.
+
+    Returns 404 if the file doesn't exist (e.g., the PMFR step was skipped
+    because all three sub-steps failed).
+    """
+    try:
+        report = ReportManager.get_report(report_id)
+        if not report:
+            return jsonify({
+                "success": False,
+                "error": f"Report not found: {report_id}"
+            }), 404
+
+        pmfr_path = os.path.join(
+            ReportManager._get_report_folder(report_id),
+            "program_manager_final_report.md",
+        )
+        if not os.path.exists(pmfr_path):
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Program Manager Final Report not available — "
+                    "the senior-model synthesis was skipped or failed. "
+                    "Check the agent log for details."
+                )
+            }), 404
+
+        return send_file(
+            pmfr_path,
+            as_attachment=True,
+            download_name=f"{report_id}_program_manager_final_report.md",
+            mimetype="text/markdown",
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to download program manager report: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
 @report_bp.route('/<report_id>/export/<fmt>', methods=['GET'])
 def export_report(report_id: str, fmt: str):
     """
