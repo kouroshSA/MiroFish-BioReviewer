@@ -137,29 +137,42 @@
               </svg>
             </button>
 
-            <!-- Program Manager Final Report — dedicated download for the
+            <!-- Program Manager Final Report — dedicated dropdown for the
                  senior-model synthesis (Synthesis & Discussion + Broader
-                 Implications + Polished Executive Summary). -->
-            <button class="pm-report-btn" @click="downloadProgramManagerReport"
-                    title="Download the senior-model synthesis as a standalone Markdown file">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="12" y1="18" x2="12" y2="12"></line>
-                <line x1="9" y1="15" x2="15" y2="15"></line>
-              </svg>
-              <span>Program Manager Final Report</span>
-            </button>
-
-            <!-- Export dropdown -->
+                 Implications + Polished Executive Summary), available in
+                 Markdown / Plain Text / Word / PDF. -->
             <div class="export-dropdown-wrapper">
-              <button class="export-btn" @click="showExportMenu = !showExportMenu">
+              <button class="pm-report-btn" @click="showPmReportMenu = !showPmReportMenu"
+                      title="Download the senior-model synthesis (Discussion + Broader Implications + Polished Executive Summary)">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="12" y1="18" x2="12" y2="12"></line>
+                  <line x1="9" y1="15" x2="15" y2="15"></line>
+                </svg>
+                <span>Program Manager Final Report</span>
+              </button>
+              <div v-if="showPmReportMenu" class="export-menu">
+                <button @click="exportProgramManagerReport('md')">Markdown (.md)</button>
+                <button @click="exportProgramManagerReport('txt')">Plain Text (.txt)</button>
+                <button @click="exportProgramManagerReport('docx')">Word (.docx)</button>
+                <button @click="exportProgramManagerReport('pdf')">PDF (.pdf)</button>
+              </div>
+            </div>
+
+            <!-- Export Draft Report — dropdown for the full draft report
+                 (all sections, including the Program Manager Final Report
+                 subsection). Renamed from "Export Report" so students can
+                 tell it apart from the senior-model polished file above. -->
+            <div class="export-dropdown-wrapper">
+              <button class="export-btn" @click="showExportMenu = !showExportMenu"
+                      title="Download the full draft report (all sections)">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="7 10 12 15 17 10"></polyline>
                   <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
-                <span>Export Report</span>
+                <span>Export Draft Report</span>
               </button>
               <div v-if="showExportMenu" class="export-menu">
                 <button @click="exportReport('md')">Markdown (.md)</button>
@@ -445,25 +458,36 @@ const goToInteraction = () => {
   }
 }
 
-// Download just the Program Manager Final Report (standalone Markdown)
-const downloadProgramManagerReport = () => {
+// Export the Program Manager Final Report (the senior-model polished
+// section) in the requested format.
+const exportProgramManagerReport = (fmt) => {
+  showPmReportMenu.value = false
   if (!props.reportId) return
-  window.open(
-    `/api/report/${props.reportId}/program-manager-report/download`,
-    '_blank'
-  )
+
+  if (fmt === 'md') {
+    window.open(
+      `/api/report/${props.reportId}/program-manager-report/download`,
+      '_blank'
+    )
+  } else {
+    window.open(
+      `/api/report/${props.reportId}/program-manager-report/export/${fmt}`,
+      '_blank'
+    )
+  }
 }
 
-// Report Export
+// Export the full Draft Report (every section, including the Program
+// Manager Final Report subsection) in the requested format.
 const exportReport = (fmt) => {
   showExportMenu.value = false
   if (!props.reportId) return
 
   if (fmt === 'md') {
-    // Use existing download endpoint
+    // Existing /download endpoint serves Markdown
     window.open(`/api/report/${props.reportId}/download`, '_blank')
   } else {
-    // Use new export endpoint for txt, docx, pdf
+    // /export/<fmt> serves txt / docx / pdf
     window.open(`/api/report/${props.reportId}/export/${fmt}`, '_blank')
   }
 }
@@ -486,6 +510,7 @@ const rightPanel = ref(null)
 const logContent = ref(null)
 const showRawResult = reactive({})
 const showExportMenu = ref(false)
+const showPmReportMenu = ref(false)
 
 // Toggle functions
 const toggleRawResult = (timestamp, event) => {

@@ -499,10 +499,150 @@ def download_program_manager_report(report_id: str):
         }), 500
 
 
+def _markdown_to_format_response(md_content: str, fmt: str, download_name_stem: str):
+    """Convert a Markdown document to the requested format and return a
+    Flask send_file response. Shared by both the full-report export and
+    the Program Manager Final Report export so the format conversion
+    logic doesn't drift between the two paths.
+
+    Args:
+        md_content: the source Markdown.
+        fmt: one of "txt", "docx", "pdf".
+        download_name_stem: filename without extension (e.g. "report_abc").
+
+    Returns:
+        A Flask response (send_file) on success, or a (jsonify, status)
+        tuple on failure.
+    """
+    import tempfile
+    import re as _re
+
+    if fmt == 'txt':
+        text = md_content
+        text = _re.sub(r'^#{1,6}\s+', '', text, flags=_re.MULTILINE)
+        text = _re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', text)
+        text = _re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+        text = _re.sub(r'!\[.*?\]\(.+?\)', '', text)
+
+        tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
+        tmp.write(text)
+        tmp.close()
+        return send_file(
+            tmp.name, as_attachment=True,
+            download_name=f"{download_name_stem}.txt",
+            mimetype='text/plain',
+        )
+
+    if fmt == 'docx':
+        try:
+            from docx import Document
+            from docx.shared import Pt, Inches  # noqa: F401
+            from docx.enum.text import WD_PARAGRAPH_ALIGNMENT  # noqa: F401
+        except ImportError:
+            return jsonify({
+                "success": False,
+                "error": "python-docx not installed. Run: pip install python-docx"
+            }), 500
+
+        doc = Document()
+
+        for line in md_content.split('\n'):
+            stripped = line.strip()
+            if not stripped:
+                doc.add_paragraph('')
+                continue
+
+            header_match = _re.match(r'^(#{1,6})\s+(.*)', stripped)
+            if header_match:
+                level = len(header_match.group(1))
+                doc.add_heading(header_match.group(2), level=min(level, 9))
+                continue
+
+            bullet_match = _re.match(r'^[-*]\s+(.*)', stripped)
+            if bullet_match:
+                doc.add_paragraph(bullet_match.group(1), style='List Bullet')
+                continue
+
+            num_match = _re.match(r'^\d+\.\s+(.*)', stripped)
+            if num_match:
+                doc.add_paragraph(num_match.group(1), style='List Number')
+                continue
+
+            text = _re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', stripped)
+            text = _re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+            doc.add_paragraph(text)
+
+        tmp = tempfile.NamedTemporaryFile(suffix='.docx', delete=False)
+        doc.save(tmp.name)
+        tmp.close()
+        return send_file(
+            tmp.name, as_attachment=True,
+            download_name=f"{download_name_stem}.docx",
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        )
+
+    if fmt == 'pdf':
+        try:
+            from fpdf import FPDF
+        except ImportError:
+            return jsonify({
+                "success": False,
+                "error": "fpdf2 not installed. Run: pip install fpdf2"
+            }), 500
+
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+
+        pdf.add_font('DejaVu', '', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', uni=True)
+        pdf.add_font('DejaVu', 'B', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', uni=True)
+
+        for line in md_content.split('\n'):
+            stripped = line.strip()
+            if not stripped:
+                pdf.ln(4)
+                continue
+
+            header_match = _re.match(r'^(#{1,6})\s+(.*)', stripped)
+            if header_match:
+                level = len(header_match.group(1))
+                sizes = {1: 20, 2: 16, 3: 14, 4: 12, 5: 11, 6: 10}
+                pdf.set_font('DejaVu', 'B', sizes.get(level, 12))
+                text = _re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', header_match.group(2))
+                pdf.multi_cell(0, 8, text)
+                pdf.ln(2)
+                continue
+
+            pdf.set_font('DejaVu', '', 10)
+            text = _re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', stripped)
+            text = _re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+
+            bullet_match = _re.match(r'^[-*]\s+(.*)', text)
+            if bullet_match:
+                text = '  • ' + bullet_match.group(1)
+
+            pdf.multi_cell(0, 5, text)
+
+        tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+        pdf.output(tmp.name)
+        tmp.close()
+        return send_file(
+            tmp.name, as_attachment=True,
+            download_name=f"{download_name_stem}.pdf",
+            mimetype='application/pdf',
+        )
+
+    return jsonify({
+        "success": False,
+        "error": f"Unsupported format: {fmt}. Supported: txt, docx, pdf"
+    }), 400
+
+
 @report_bp.route('/<report_id>/export/<fmt>', methods=['GET'])
 def export_report(report_id: str, fmt: str):
     """
-    Export report in various formats.
+    Export the full draft report (all sections, including the Program
+    Manager Final Report subsection) in the requested format.
 
     Supported formats: txt, docx, pdf
     """
@@ -512,136 +652,7 @@ def export_report(report_id: str, fmt: str):
             return jsonify({"success": False, "error": f"Report not found: {report_id}"}), 404
 
         md_content = report.markdown_content or ''
-        import tempfile
-        import re as _re
-
-        if fmt == 'txt':
-            # Strip markdown formatting for plain text
-            text = md_content
-            # Remove markdown headers
-            text = _re.sub(r'^#{1,6}\s+', '', text, flags=_re.MULTILINE)
-            # Remove bold/italic
-            text = _re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', text)
-            # Remove links [text](url) -> text
-            text = _re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
-            # Remove images
-            text = _re.sub(r'!\[.*?\]\(.+?\)', '', text)
-
-            tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
-            tmp.write(text)
-            tmp.close()
-            return send_file(tmp.name, as_attachment=True, download_name=f"{report_id}.txt", mimetype='text/plain')
-
-        elif fmt == 'docx':
-            try:
-                from docx import Document
-                from docx.shared import Pt, Inches
-                from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-            except ImportError:
-                return jsonify({
-                    "success": False,
-                    "error": "python-docx not installed. Run: pip install python-docx"
-                }), 500
-
-            doc = Document()
-
-            # Parse markdown into docx
-            lines = md_content.split('\n')
-            for line in lines:
-                stripped = line.strip()
-                if not stripped:
-                    doc.add_paragraph('')
-                    continue
-
-                # Headers
-                header_match = _re.match(r'^(#{1,6})\s+(.*)', stripped)
-                if header_match:
-                    level = len(header_match.group(1))
-                    doc.add_heading(header_match.group(2), level=min(level, 9))
-                    continue
-
-                # Bullet points
-                bullet_match = _re.match(r'^[-*]\s+(.*)', stripped)
-                if bullet_match:
-                    doc.add_paragraph(bullet_match.group(1), style='List Bullet')
-                    continue
-
-                # Numbered lists
-                num_match = _re.match(r'^\d+\.\s+(.*)', stripped)
-                if num_match:
-                    doc.add_paragraph(num_match.group(1), style='List Number')
-                    continue
-
-                # Regular paragraph - clean inline markdown
-                text = _re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', stripped)
-                text = _re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
-                doc.add_paragraph(text)
-
-            tmp = tempfile.NamedTemporaryFile(suffix='.docx', delete=False)
-            doc.save(tmp.name)
-            tmp.close()
-            return send_file(
-                tmp.name, as_attachment=True,
-                download_name=f"{report_id}.docx",
-                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            )
-
-        elif fmt == 'pdf':
-            try:
-                from fpdf import FPDF
-            except ImportError:
-                return jsonify({
-                    "success": False,
-                    "error": "fpdf2 not installed. Run: pip install fpdf2"
-                }), 500
-
-            pdf = FPDF()
-            pdf.set_auto_page_break(auto=True, margin=15)
-            pdf.add_page()
-
-            # Use built-in fonts with unicode support
-            pdf.add_font('DejaVu', '', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', uni=True)
-            pdf.add_font('DejaVu', 'B', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', uni=True)
-
-            lines = md_content.split('\n')
-            for line in lines:
-                stripped = line.strip()
-                if not stripped:
-                    pdf.ln(4)
-                    continue
-
-                header_match = _re.match(r'^(#{1,6})\s+(.*)', stripped)
-                if header_match:
-                    level = len(header_match.group(1))
-                    sizes = {1: 20, 2: 16, 3: 14, 4: 12, 5: 11, 6: 10}
-                    pdf.set_font('DejaVu', 'B', sizes.get(level, 12))
-                    # Clean inline markdown
-                    text = _re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', header_match.group(2))
-                    pdf.multi_cell(0, 8, text)
-                    pdf.ln(2)
-                    continue
-
-                # Regular text
-                pdf.set_font('DejaVu', '', 10)
-                text = _re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', stripped)
-                text = _re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
-
-                bullet_match = _re.match(r'^[-*]\s+(.*)', text)
-                if bullet_match:
-                    text = '  • ' + bullet_match.group(1)
-
-                pdf.multi_cell(0, 5, text)
-
-            tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
-            pdf.output(tmp.name)
-            tmp.close()
-            return send_file(tmp.name, as_attachment=True, download_name=f"{report_id}.pdf", mimetype='application/pdf')
-
-        else:
-            return jsonify({
-                "success": False,
-                "error": f"Unsupported format: {fmt}. Supported: txt, docx, pdf"
-            }), 400
+        return _markdown_to_format_response(md_content, fmt, report_id)
 
     except Exception as e:
         logger.error(f"Report export failed: {e}")
@@ -649,6 +660,53 @@ def export_report(report_id: str, fmt: str):
             "success": False,
             "error": str(e),
             "traceback": traceback.format_exc()
+        }), 500
+
+
+@report_bp.route('/<report_id>/program-manager-report/export/<fmt>', methods=['GET'])
+def export_program_manager_report(report_id: str, fmt: str):
+    """
+    Export ONLY the Program Manager Final Report (the senior-model
+    polished section) in the requested format.
+
+    Supported formats: txt, docx, pdf. (For Markdown, use the existing
+    /program-manager-report/download endpoint.)
+    """
+    try:
+        report = ReportManager.get_report(report_id)
+        if not report:
+            return jsonify({
+                "success": False,
+                "error": f"Report not found: {report_id}",
+            }), 404
+
+        pmfr_path = os.path.join(
+            ReportManager._get_report_folder(report_id),
+            "program_manager_final_report.md",
+        )
+        if not os.path.exists(pmfr_path):
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Program Manager Final Report not available — the "
+                    "senior-model synthesis was skipped or failed. "
+                    "Check the agent log for details."
+                ),
+            }), 404
+
+        with open(pmfr_path, "r", encoding="utf-8") as f:
+            md_content = f.read()
+
+        return _markdown_to_format_response(
+            md_content, fmt, f"{report_id}_program_manager_final_report"
+        )
+
+    except Exception as e:
+        logger.error(f"Program Manager Report export failed: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
         }), 500
 
 
