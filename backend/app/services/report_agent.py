@@ -2237,31 +2237,51 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
         program_manager_final_report.md so the UI can offer a dedicated
         download button.
 
-        Returns the composed section content (starting with the ## heading)
-        or an empty string if all three sub-steps failed.
+        Always returns a non-empty section (with diagnostic placeholders for
+        any sub-step that fails) and always writes the standalone file. This
+        keeps the orange download button functional and gives students a
+        clear paper trail when a sub-step misbehaves, instead of silently
+        producing no PMFR section at all.
         """
+        # Helper — runs one sub-step, swallows exceptions, records status.
+        def _run_substep(name, callable_, *args, **kwargs):
+            try:
+                result = callable_(*args, **kwargs) or ""
+                if not result.strip():
+                    logger.warning("PMFR sub-step %r returned empty output", name)
+                    return "", "empty (LLM returned nothing — see preceding ✗ log line for the API error)"
+                logger.info("PMFR sub-step %r produced %d chars", name, len(result))
+                return result, "ok"
+            except Exception as e:
+                logger.exception("PMFR sub-step %r crashed: %s", name, e)
+                return "", f"crashed: {type(e).__name__}: {e}"
+
         # Step 1 — Synthesis & Discussion (reuses existing helper)
         if progress_callback:
             progress_callback(
                 "generating", 89,
                 "Program Manager Final Report: synthesis & discussion...",
             )
-        discussion_raw = self._generate_discussion_section(
+        discussion_raw, discussion_status = _run_substep(
+            "discussion",
+            self._generate_discussion_section,
             report_id=report_id,
             generated_sections=generated_sections,
             section_index=section_index,
             progress_callback=None,  # progress reported here, not in sub-step
-        ) or ""
+        )
         # Strip the leading "## Discussion" heading we'll re-add as a "###"
         # subheading. Also strip any "### Broader Implications" the discussion
         # prompt may have appended (we'll show that under its own subheading).
-        discussion_body = re.sub(
-            r"^##\s+Discussion\s*\n+", "", discussion_raw, count=1
-        ).strip()
-        discussion_body = re.split(
-            r"^###\s+Broader Implications\s*$", discussion_body,
-            maxsplit=1, flags=re.MULTILINE,
-        )[0].strip()
+        discussion_body = ""
+        if discussion_raw:
+            discussion_body = re.sub(
+                r"^##\s+Discussion\s*\n+", "", discussion_raw, count=1
+            ).strip()
+            discussion_body = re.split(
+                r"^###\s+Broader Implications\s*$", discussion_body,
+                maxsplit=1, flags=re.MULTILINE,
+            )[0].strip()
 
         # Step 2 — Broader Implications (reuses existing helper)
         if progress_callback:
@@ -2269,17 +2289,21 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
                 "generating", 92,
                 "Program Manager Final Report: broader implications...",
             )
-        big_picture_raw = self._generate_big_picture_section(
+        big_picture_raw, big_picture_status = _run_substep(
+            "big_picture",
+            self._generate_big_picture_section,
             generated_sections=generated_sections,
             discussion_content=discussion_raw,
             section_index=section_index,
             progress_callback=None,
-        ) or ""
-        big_picture_body = re.sub(
-            r"^##\s+Big Picture\s*\n+", "", big_picture_raw, count=1
-        ).strip()
+        )
+        big_picture_body = ""
+        if big_picture_raw:
+            big_picture_body = re.sub(
+                r"^##\s+Big Picture\s*\n+", "", big_picture_raw, count=1
+            ).strip()
 
-        # Step 3 — NEW: polished executive summary over the whole report
+        # Step 3 — Polished executive summary over the whole report.
         if progress_callback:
             progress_callback(
                 "generating", 94,
@@ -2293,39 +2317,76 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
                 "## Broader Implications\n\n"
                 f"{big_picture_body}\n"
             )
-        polished_body = self._generate_polished_summary(report_for_polish)
+        polished_body, polished_status = _run_substep(
+            "polished_summary",
+            self._generate_polished_summary,
+            report_for_polish,
+        )
 
-        # If everything failed, surface that to the caller so it can log + skip.
+        # Compose the section. ALWAYS produce content — diagnostic placeholders
+        # for any sub-step that failed, so the orange download button always
+        # has something useful to download (and the failure is visible).
         if not (discussion_body or big_picture_body or polished_body):
             logger.warning(
-                "Program Manager Final Report: all three sub-steps returned empty"
+                "PMFR: all three sub-steps returned empty; emitting diagnostic "
+                "placeholder section so the UI button still works"
             )
-            return ""
 
-        # Compose the section.
-        parts = [f"## Program Manager Final Report\n", f"\n{self.PMFR_INTRO}\n"]
+        parts = [
+            "## Program Manager Final Report\n",
+            f"\n{self.PMFR_INTRO}\n",
+        ]
+
+        parts.append("\n### Synthesis & Discussion\n\n")
         if discussion_body:
-            parts.append("\n### Synthesis & Discussion\n\n")
             parts.append(discussion_body + "\n")
         else:
-            parts.append("\n### Synthesis & Discussion\n\n")
-            parts.append("_(Discussion sub-step did not produce output; see logs.)_\n")
+            parts.append(
+                f"_Discussion sub-step did not produce output. Status: "
+                f"**{discussion_status}**. Check the streamed Flask log for "
+                f"the preceding `LLM call ✗ FAILED` line._\n"
+            )
+
+        parts.append("\n### Broader Implications\n\n")
         if big_picture_body:
-            parts.append("\n### Broader Implications\n\n")
             parts.append(big_picture_body + "\n")
         else:
-            parts.append("\n### Broader Implications\n\n")
-            parts.append("_(Broader implications sub-step did not produce output; see logs.)_\n")
+            parts.append(
+                f"_Broader Implications sub-step did not produce output. "
+                f"Status: **{big_picture_status}**._\n"
+            )
+
+        parts.append("\n### Polished Executive Summary\n\n")
         if polished_body:
-            parts.append("\n### Polished Executive Summary\n\n")
             parts.append(polished_body + "\n")
         else:
-            parts.append("\n### Polished Executive Summary\n\n")
-            parts.append("_(Polish sub-step did not produce output; see logs.)_\n")
+            parts.append(
+                f"_Polished Executive Summary sub-step did not produce output. "
+                f"Status: **{polished_status}**._\n"
+            )
+
+        # If all three failed, append a final diagnostic block that's
+        # impossible to miss when the file is opened.
+        if not (discussion_body or big_picture_body or polished_body):
+            parts.append(
+                "\n---\n\n"
+                "> ⚠️ **All three Program Manager Final Report sub-steps "
+                f"returned empty output.** Most common causes:\n"
+                "> - LLM provider rate-limit hit (Anthropic Tier 1 has tight "
+                "  per-minute caps; wait 60s and re-run, or upgrade your tier).\n"
+                "> - LLM provider refused content (try a different model).\n"
+                "> - Network timeout (LLMClient hard-stops at 120s; try again).\n"
+                "> \n"
+                f"> Sub-step status: discussion = `{discussion_status}`, "
+                f"big_picture = `{big_picture_status}`, "
+                f"polished = `{polished_status}`.\n"
+            )
 
         composed = "".join(parts)
 
-        # Persist standalone file for the UI download button.
+        # ALWAYS persist the standalone file, even if every sub-step failed —
+        # the orange download button must always have something to deliver,
+        # so students can see the diagnostic and act on it.
         try:
             standalone_path = os.path.join(
                 ReportManager._get_report_folder(report_id), self.PMFR_FILENAME
@@ -2333,12 +2394,11 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
             with open(standalone_path, "w", encoding="utf-8") as f:
                 f.write(composed)
             logger.info(
-                "Program Manager Final Report standalone file saved: %s",
-                standalone_path,
+                "Program Manager Final Report standalone file saved: %s "
+                "(discussion=%s, big_picture=%s, polished=%s)",
+                standalone_path, discussion_status, big_picture_status, polished_status,
             )
         except Exception as e:
-            # Standalone copy is convenience only; the section is already in
-            # outline.sections and will be assembled into full_report.md.
             logger.warning(
                 "Failed to write %s standalone copy: %s", self.PMFR_FILENAME, e
             )
@@ -2560,6 +2620,10 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
                 progress_callback=progress_callback,
             )
 
+            # The orchestrator now always returns non-empty content (real
+            # output if any sub-step succeeded, diagnostic placeholders
+            # otherwise), so we always save the section. Defensive empty
+            # check kept in case future refactors regress on that contract.
             if pmfr_content:
                 pmfr_section = ReportSection(
                     title="Program Manager Final Report", content=""
@@ -2576,9 +2640,6 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
                 # Persist outline.json so the saved outline reflects the
                 # appended PMFR section (the original outline.json was written
                 # after Phase 1 planning and didn't know about this section).
-                # The post-processor relies on outline.sections to keep ##
-                # headings intact, but the on-disk file is what consumers
-                # like the UI's "Outline" tab read.
                 ReportManager.save_outline(report_id, outline)
 
                 if self.report_logger:
@@ -2592,11 +2653,17 @@ Output ONLY the paragraph — no heading, no preamble, no bullet points. Just on
                     "Program Manager Final Report saved: %s/section_%02d.md",
                     report_id, pmfr_index,
                 )
+            else:
+                # Defensive — should not happen now that the orchestrator
+                # always emits a diagnostic section. Log loudly if it does.
+                logger.error(
+                    "PMFR orchestrator returned empty content unexpectedly — "
+                    "check _generate_program_manager_final_report contract"
+                )
 
             ReportManager.update_progress(
                 report_id, "generating", 96,
-                "Program Manager Final Report complete" if pmfr_content
-                else "Program Manager Final Report skipped",
+                "Program Manager Final Report complete",
                 current_section=None,
                 completed_sections=completed_section_titles
             )
