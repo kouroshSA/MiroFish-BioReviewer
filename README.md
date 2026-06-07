@@ -40,7 +40,11 @@
 <div align="center">
 <img src="./static/image/Screenshot/Bioreviewer1.png" alt="BioReviewer Screenshot 1" width="80%"/>
 <br/>
+<em>After the knowledge graph is generated, agents assuming the roles of biological entities discuss the proposals from their specific viewpoints.</em>
+<br/><br/>
 <img src="./static/image/Screenshot/Bioreviewer2.png" alt="BioReviewer Screenshot 2" width="80%"/>
+<br/>
+<em>Once the agents have made their posts, a reviewer agent sums up and distills the discussion.</em>
 </div>
 
 ## ⚡ 项目概述
