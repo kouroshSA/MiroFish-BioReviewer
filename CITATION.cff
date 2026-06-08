@@ -7,6 +7,7 @@ authors:
     given-names: "Kourosh"
 repository-code: "https://github.com/kouroshSA/MiroFish-BioReviewer"
 url: "https://github.com/kouroshSA/MiroFish-BioReviewer"
+license: AGPL-3.0
 date-released: "2026-06-07"
 references:
   - type: software
