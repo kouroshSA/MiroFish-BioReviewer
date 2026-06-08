@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "This repository is a fork/derivative of the MiroFish project (see references). If you use it in your work, please cite this repository and the original MiroFish project."
+title: "MiroFish-BioReviewer"
+type: software
+authors:
+  - family-names: "Salehi-Ashtiani"
+    given-names: "Kourosh"
+repository-code: "https://github.com/kouroshSA/MiroFish-BioReviewer"
+url: "https://github.com/kouroshSA/MiroFish-BioReviewer"
+date-released: "2026-06-07"
+references:
+  - type: software
+    title: "MiroFish"
+    abstract: "Upstream project from which this repository is derived."
+    repository-code: "https://github.com/666ghj/MiroFish"
+    authors:
+      - name: "MiroFish project contributors"
